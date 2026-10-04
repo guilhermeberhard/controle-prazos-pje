@@ -1,0 +1,6 @@
+Coloque aqui o brasão oficial da Polícia Civil do Espírito Santo com o nome:
+
+    logo-pces.png
+
+(PNG com fundo transparente, de preferência quadrado, ~256x256 px.)
+Enquanto o arquivo não existir, o sistema mostra um selo provisório "PC ES".
