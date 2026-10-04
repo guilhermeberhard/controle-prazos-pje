@@ -1,0 +1,4 @@
+backup-*.json
+*.csv
+.DS_Store
+Thumbs.db

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controle de Prazos PJE – PCES</title>
+  <link rel="icon" href="assets/logo-pces.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img id="logo" class="logo" src="assets/logo-pces.png" alt="Polícia Civil do Espírito Santo">
+      <div id="logo-fallback" class="logo logo-fallback" aria-hidden="true">PC<small>ES</small></div>
+      <div class="brand-text">
+        <strong>Polícia Civil do Espírito Santo</strong>
+        <span id="brand-unidade">Controle de Prazos e Diligências – PJE</span>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-view="painel" class="active">Painel</button>
+      <button data-view="diligencias">Diligências</button>
+      <button data-view="calendario">Calendário</button>
+      <button data-view="modelos">Respostas padrão</button>
+      <button data-view="config">Configurações</button>
+    </nav>
+  </header>
+
+  <div id="aviso-backup" class="aviso hidden"></div>
+
+  <main>
+    <!-- PAINEL -->
+    <section id="view-painel" class="view active">
+      <div class="section-head">
+        <h1>Painel de prazos</h1>
+        <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Atenção imediata</h2>
+          <p class="muted small">Diligências em aberto com prazo PJE vencido ou dentro da margem de alerta.</p>
+          <div id="lista-urgentes"></div>
+        </div>
+        <div class="card">
+          <h2>Considere pedir dilação de prazo</h2>
+          <p class="muted small">Seu prazo interno de cumprimento ultrapassa o prazo do PJE, ou o prazo PJE está próximo e a diligência depende de terceiros.</p>
+          <div id="lista-dilacao"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Cumpridas aguardando resposta no PJE</h2>
+        <div id="lista-responder"></div>
+      </div>
+    </section>
+
+    <!-- DILIGÊNCIAS -->
+    <section id="view-diligencias" class="view">
+      <div class="section-head">
+        <h1>Diligências</h1>
+        <div class="btn-row">
+          <button class="btn" data-action="exportar-csv">Exportar planilha (CSV)</button>
+          <button class="btn" data-action="imprimir">Imprimir</button>
+          <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
+        </div>
+      </div>
+      <div class="filtros card">
+        <input type="search" id="flt-busca" placeholder="Buscar por processo, IP, órgão, descrição, responsável...">
+        <select id="flt-status"></select>
+        <select id="flt-requisitante"></select>
+        <select id="flt-tipo"></select>
+        <select id="flt-urgencia">
+          <option value="">Qualquer prazo</option>
+          <option value="vencido">Vencidas</option>
+          <option value="hoje">Vencem hoje</option>
+          <option value="semana">Próximos 7 dias</option>
+          <option value="reupreso">Com réu/investigado preso</option>
+        </select>
+      </div>
+      <div class="card table-wrap">
+        <table class="tabela">
+          <thead>
+            <tr>
+              <th>Prazo PJE</th>
+              <th>Prazo interno</th>
+              <th>Processo / IP</th>
+              <th>Diligência</th>
+              <th>Requisitante</th>
+              <th>Responsável</th>
+              <th>Status</th>
+              <th class="no-print">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-diligencias"></tbody>
+        </table>
+        <p id="sem-resultados" class="muted center hidden">Nenhuma diligência encontrada.</p>
+      </div>
+    </section>
+
+    <!-- CALENDÁRIO -->
+    <section id="view-calendario" class="view">
+      <div class="section-head">
+        <h1>Calendário de prazos</h1>
+        <div class="btn-row">
+          <button class="btn" data-action="mes-anterior">‹</button>
+          <strong id="cal-titulo" class="cal-titulo"></strong>
+          <button class="btn" data-action="mes-proximo">›</button>
+          <button class="btn" data-action="mes-atual">Hoje</button>
+        </div>
+      </div>
+      <p class="muted small legenda">
+        <span class="chip pje">PJE</span> prazo do sistema PJE &nbsp;
+        <span class="chip interno">INT</span> prazo interno de cumprimento &nbsp;
+        <span class="chip feriado">Feriado</span>
+      </p>
+      <div class="calendario card" id="calendario"></div>
+    </section>
+
+    <!-- MODELOS -->
+    <section id="view-modelos" class="view">
+      <div class="section-head">
+        <h1>Quadro de respostas padrão</h1>
+        <div class="btn-row">
+          <button class="btn" data-action="gerar-resposta">Gerar resposta</button>
+          <button class="btn primary" data-action="novo-modelo">+ Novo modelo</button>
+        </div>
+      </div>
+      <div class="filtros card">
+        <input type="search" id="mod-busca" placeholder="Buscar modelo...">
+        <select id="mod-categoria"></select>
+      </div>
+      <details class="card placeholders">
+        <summary>Campos automáticos disponíveis nos modelos</summary>
+        <p class="small muted">Ao gerar a resposta a partir de uma diligência, estes campos são preenchidos automaticamente. Campos sem informação aparecem como "______".</p>
+        <div id="lista-placeholders" class="ph-grid"></div>
+      </details>
+      <div id="grid-modelos" class="grid-modelos"></div>
+    </section>
+
+    <!-- CONFIG -->
+    <section id="view-config" class="view">
+      <div class="section-head"><h1>Configurações</h1></div>
+      <div class="grid2">
+        <form class="card" id="form-config">
+          <h2>Dados da unidade (usados nas respostas)</h2>
+          <label>Nome da autoridade policial<input id="cfg-delegado" placeholder="Ex.: Fulano de Tal"></label>
+          <label>Cargo<input id="cfg-cargo"></label>
+          <label>Unidade policial<input id="cfg-delegacia" placeholder="Ex.: Delegacia de Polícia de ..."></label>
+          <label>Cidade<input id="cfg-cidade" placeholder="Ex.: Vitória"></label>
+          <h2>Prazos</h2>
+          <div class="row2">
+            <label>Margem de alerta (dias)<input type="number" min="0" max="60" id="cfg-margem"></label>
+            <label>Contagem padrão
+              <select id="cfg-contagem"><option value="corridos">Dias corridos</option><option value="uteis">Dias úteis</option></select>
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" id="cfg-prorrogar"> Prorrogar vencimento que cair em fim de semana/feriado para o próximo dia útil</label>
+          <label>Feriados e suspensões adicionais (um por linha: dd/mm para anual ou dd/mm/aaaa para data única)
+            <textarea id="cfg-feriados" rows="5" placeholder="Ex.:&#10;08/09 (feriado municipal)&#10;23/05&#10;20/12/2026"></textarea>
+          </label>
+          <p class="small muted">Feriados nacionais (inclusive Carnaval, Sexta-feira Santa e Corpus Christi) já são calculados automaticamente.</p>
+          <button class="btn primary" type="submit">Salvar configurações</button>
+        </form>
+        <div>
+          <div class="card">
+            <h2>Logotipo</h2>
+            <p class="small muted">O sistema usa o arquivo <code>assets/logo-pces.png</code> do repositório. Você também pode carregar a imagem aqui (fica salva apenas neste navegador).</p>
+            <div class="logo-preview"><img id="cfg-logo-preview" alt=""></div>
+            <div class="btn-row">
+              <label class="btn">Carregar imagem<input type="file" id="cfg-logo" accept="image/*" hidden></label>
+              <button class="btn" data-action="remover-logo">Remover</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Cópia de segurança</h2>
+            <p class="small muted">Os dados ficam gravados somente neste navegador, neste computador. Faça backups regularmente e guarde-os em local seguro (não publique no GitHub).</p>
+            <p class="small" id="info-backup"></p>
+            <div class="btn-row">
+              <button class="btn primary" data-action="exportar-json">Baixar backup</button>
+              <label class="btn">Restaurar backup<input type="file" id="importar-json" accept=".json,application/json" hidden></label>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Manutenção</h2>
+            <div class="btn-row">
+              <button class="btn" data-action="restaurar-modelos">Restaurar modelos padrão</button>
+              <button class="btn danger" data-action="apagar-tudo">Apagar todos os dados</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">Controle interno de prazos – uso restrito. Os dados não são enviados a nenhum servidor.</footer>
+
+  <!-- MODAL DILIGÊNCIA -->
+  <dialog id="dlg-diligencia" class="dlg">
+    <form id="form-diligencia" method="dialog">
+      <div class="dlg-head">
+        <h2 id="dlg-dil-titulo">Nova diligência</h2>
+        <button type="button" class="x" data-close>×</button>
+      </div>
+      <div class="dlg-body">
+        <input type="hidden" id="f-id">
+        <div class="row2">
+          <label>Nº do processo (PJE)<input id="f-processo" placeholder="0000000-00.0000.8.08.0000"></label>
+          <label>Nº do inquérito / procedimento<input id="f-inquerito" placeholder="Ex.: IP nº 000/2026"></label>
+        </div>
+        <div class="row3">
+          <label>Tipo de diligência<select id="f-tipo"></select></label>
+          <label>Requisitante<select id="f-requisitante"></select></label>
+          <label>Vara / órgão<input id="f-orgao" placeholder="Ex.: 1ª Vara Criminal de ..."></label>
+        </div>
+        <label>Descrição do que foi requisitado<textarea id="f-descricao" rows="3" placeholder="Ex.: Intimar a vítima X para comparecer à audiência...; juntar laudo de exame de corpo de delito..."></textarea></label>
+        <div class="row3">
+          <label>Recebido/intimado no PJE em<input type="date" id="f-recebimento"></label>
+          <label>Prazo PJE (vencimento)<input type="date" id="f-prazoPje"></label>
+          <label>Prazo interno de cumprimento<input type="date" id="f-prazoInterno"></label>
+        </div>
+        <div class="calc">
+          <span>Calcular:</span>
+          <input type="number" id="calc-dias" min="1" value="10">
+          <select id="calc-modo"><option value="corridos">dias corridos</option><option value="uteis">dias úteis</option></select>
+          <span>a partir do recebimento →</span>
+          <button type="button" class="btn sm" data-action="calc-pje">aplicar ao Prazo PJE</button>
+          <button type="button" class="btn sm" data-action="calc-interno">aplicar ao Prazo interno</button>
+          <span id="calc-info" class="small muted"></span>
+        </div>
+        <div class="row3">
+          <label>Responsável (escrivão/agente)<input id="f-responsavel"></label>
+          <label>Status<select id="f-status"></select></label>
+          <label>ID / nº do documento no PJE<input id="f-idPje" placeholder="Opcional"></label>
+        </div>
+        <label class="check"><input type="checkbox" id="f-reuPreso"> Investigado/réu preso (prioridade)</label>
+        <label>Observações<textarea id="f-obs" rows="2"></textarea></label>
+        <div class="andamentos">
+          <h3>Histórico de andamentos</h3>
+          <div class="add-and">
+            <input type="date" id="and-data">
+            <input id="and-texto" placeholder="Ex.: Expedida intimação; vítima não localizada; laudo solicitado à perícia...">
+            <button type="button" class="btn sm" data-action="add-andamento">Adicionar</button>
+          </div>
+          <ul id="lista-andamentos"></ul>
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <button type="button" class="btn danger hidden" id="btn-excluir-dil" data-action="excluir-diligencia">Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL MODELO -->
+  <dialog id="dlg-modelo" class="dlg">
+    <form id="form-modelo" method="dialog">
+      <div class="dlg-head">
+        <h2 id="dlg-mod-titulo">Novo modelo</h2>
+        <button type="button" class="x" data-close>×</button>
+      </div>
+      <div class="dlg-body">
+        <input type="hidden" id="m-id">
+        <div class="row2">
+          <label>Título<input id="m-titulo" required></label>
+          <label>Categoria<input id="m-categoria" list="categorias-list" required></label>
+        </div>
+        <datalist id="categorias-list"></datalist>
+        <label>Texto do modelo<textarea id="m-texto" rows="16" required></textarea></label>
+        <p class="small muted">Use campos como <code>{{processo}}</code>, <code>{{inquerito}}</code>, <code>{{autoridade}}</code>, <code>{{data_extenso}}</code>. Veja a lista completa na página de respostas padrão.</p>
+      </div>
+      <div class="dlg-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar modelo</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL GERAR RESPOSTA -->
+  <dialog id="dlg-resposta" class="dlg wide">
+    <div class="dlg-head">
+      <h2>Gerar resposta</h2>
+      <button type="button" class="x" data-close>×</button>
+    </div>
+    <div class="dlg-body">
+      <div class="row2">
+        <label>Diligência<select id="r-diligencia"></select></label>
+        <label>Modelo<select id="r-modelo"></select></label>
+      </div>
+      <label>Texto (pode ser editado antes de copiar)<textarea id="r-texto" rows="18"></textarea></label>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-action="baixar-resposta">Baixar .txt</button>
+      <button type="button" class="btn" id="btn-marcar-respondida" data-action="marcar-respondida-dlg">Marcar diligência como respondida</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Fechar</button>
+      <button type="button" class="btn primary" data-action="copiar-resposta">Copiar texto</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="js/modelos-padrao.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
