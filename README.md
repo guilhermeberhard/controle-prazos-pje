@@ -13,6 +13,20 @@ Funciona inteiramente no navegador: não precisa de servidor, banco de dados nem
 - **Respostas padrão**: 12 modelos iniciais (diligência cumprida, juntada de laudo, laudo pendente, intimação cumprida/frustrada, pedido de dilação – art. 10, §3º, CPP, relatório final etc.), totalmente editáveis, com **preenchimento automático** dos dados da diligência (`{{processo}}`, `{{inquerito}}`, `{{autoridade}}`, `{{data_extenso}}`...). Botão para copiar e colar no PJE.
 - Filtros e busca, exportação para planilha (CSV/Excel), impressão, backup e restauração (JSON).
 
+## Importar do PJE (sem digitar)
+
+Botão **⇩ Importar do PJE** (no Painel e em Diligências). Três formas, todas processadas **apenas no seu navegador**:
+
+1. **Copiar e colar** – na lista de expedientes/intimações do PJE, `Ctrl+A`, `Ctrl+C` e cole na tela de importação. Vários processos de uma vez.
+2. **PDF do expediente** – arraste os PDFs de despachos/ofícios baixados do PJE. Cada PDF vira uma diligência (somente PDFs com texto; escaneados não são lidos). O leitor de PDF (pdf.js) é baixado do cdnjs na primeira vez – exige internet.
+3. **Botão de favorito** – na aba "Botão no navegador", arraste o botão para a barra de favoritos. Com o PJE aberto, um clique envia o conteúdo da tela para o sistema (via `postMessage`, de janela para janela, sem servidor). O favorito é gerado com o endereço onde o sistema está publicado; se mudar o endereço, reinstale-o.
+
+O sistema reconhece automaticamente: nº CNJ do processo, nº do IP/TCO/APF, vara, datas de ciência/expedição, data limite ou prazo em dias/horas (calculado com as regras de contagem configuradas), tipo de diligência, se o requisitante é o MP e se há investigado preso. Tudo aparece numa **prévia editável** antes de gravar; processos já cadastrados com o mesmo prazo vêm desmarcados.
+
+A leitura é feita por regras de texto (`js/importar-pje.js`). Se o layout da tela do PJE/TJES for diferente do previsto, ajuste as expressões regulares nesse arquivo.
+
+> Integração direta (automática, sem abrir o PJE) só é possível por convênio institucional com o TJES, usando o webservice MNI (Modelo Nacional de Interoperabilidade) com credenciais da instituição — caminho que deve ser tratado pela área de TI da PCES.
+
 ## Como publicar no GitHub (GitHub Pages)
 
 1. Crie um repositório no GitHub (ex.: `controle-prazos-pje`).
@@ -49,6 +63,7 @@ index.html              página principal
 css/style.css           aparência
 js/app.js               lógica do sistema
 js/modelos-padrao.js    textos das respostas padrão iniciais
+js/importar-pje.js      importação do PJE (colar, PDF, favorito)
 assets/logo-pces.png    brasão (adicionar)
 ```
 

@@ -33,7 +33,10 @@
     <section id="view-painel" class="view active">
       <div class="section-head">
         <h1>Painel de prazos</h1>
-        <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
+        <div class="btn-row">
+          <button class="btn" data-action="importar-pje">⇩ Importar do PJE</button>
+          <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
+        </div>
       </div>
       <div class="stats" id="stats"></div>
       <div class="grid2">
@@ -61,6 +64,7 @@
         <div class="btn-row">
           <button class="btn" data-action="exportar-csv">Exportar planilha (CSV)</button>
           <button class="btn" data-action="imprimir">Imprimir</button>
+          <button class="btn" data-action="importar-pje">⇩ Importar do PJE</button>
           <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
         </div>
       </div>
@@ -300,9 +304,76 @@
     </div>
   </dialog>
 
+  <!-- MODAL IMPORTAR DO PJE -->
+  <dialog id="dlg-importar" class="dlg wide">
+    <div class="dlg-head">
+      <h2>Importar do PJE</h2>
+      <button type="button" class="x" data-close>×</button>
+    </div>
+    <div class="dlg-body">
+      <div id="imp-etapa1">
+        <div class="subtabs">
+          <button type="button" class="active" data-imp-tab="colar">1. Copiar e colar</button>
+          <button type="button" data-imp-tab="pdf">2. PDF do expediente</button>
+          <button type="button" data-imp-tab="favorito">3. Botão no navegador</button>
+        </div>
+
+        <div class="imp-tab" id="imp-tab-colar">
+          <p class="small">No PJE, abra a lista de <b>expedientes / intimações pendentes</b> (ou o próprio documento), selecione o conteúdo com <kbd>Ctrl</kbd>+<kbd>A</kbd>, copie com <kbd>Ctrl</kbd>+<kbd>C</kbd> e cole abaixo. O sistema identifica automaticamente os números de processo, datas, prazos, vara e tipo de diligência.</p>
+          <textarea id="imp-texto" rows="10" placeholder="Cole aqui o conteúdo copiado do PJE..."></textarea>
+          <div class="btn-row" style="margin-top:8px">
+            <button type="button" class="btn" data-action="imp-colar-clipboard">Colar da área de transferência</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn primary" data-action="imp-analisar">Analisar texto</button>
+          </div>
+        </div>
+
+        <div class="imp-tab hidden" id="imp-tab-pdf">
+          <p class="small">Baixe do PJE o PDF do despacho/ofício/intimação e arraste para cá (pode ser vários de uma vez). Cada PDF vira uma diligência. Funciona com PDFs que têm texto selecionável (os gerados pelo próprio PJE); documentos escaneados não são lidos.</p>
+          <label class="dropzone" id="imp-drop">
+            <input type="file" id="imp-pdf" accept="application/pdf,.pdf" multiple hidden>
+            <span><b>Arraste os PDFs aqui</b> ou clique para selecionar</span>
+          </label>
+          <p class="small muted" id="imp-pdf-status"></p>
+        </div>
+
+        <div class="imp-tab hidden" id="imp-tab-favorito">
+          <p class="small">Instale uma única vez: <b>arraste o botão abaixo para a barra de favoritos</b> do navegador (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> mostra a barra).</p>
+          <p class="center"><a id="imp-bookmarklet" class="btn primary bookmarklet" href="#">⇩ Enviar ao Controle de Prazos</a></p>
+          <p class="small">Depois, no PJE, abra a tela de expedientes (ou um documento) e clique no favorito. Esta tela abre sozinha com os dados prontos para conferência. Se quiser enviar só uma parte, selecione o trecho antes de clicar.</p>
+          <p class="small muted">O favorito apenas lê o que já está na sua tela do PJE e envia diretamente para esta janela, dentro do seu computador. Nenhum dado passa por servidor externo e sua senha/certificado não são acessados.</p>
+        </div>
+      </div>
+
+      <div id="imp-etapa2" class="hidden">
+        <div class="imp-resumo">
+          <span id="imp-resumo-texto"></span>
+          <span class="spacer"></span>
+          <label class="check"><input type="checkbox" id="imp-marcar-todos" checked> Marcar todas</label>
+        </div>
+        <div class="table-wrap">
+          <table class="tabela imp-tabela">
+            <thead><tr>
+              <th></th><th>Processo / IP</th><th>Tipo / requisitante</th><th>Recebido</th><th>Prazo PJE</th><th>Prazo interno</th><th>Vara / descrição</th>
+            </tr></thead>
+            <tbody id="imp-tbody"></tbody>
+          </table>
+        </div>
+        <p class="small muted">Confira os dados antes de importar: a leitura é automática e pode precisar de ajustes. Linhas marcadas como <span class="badge atencao">já cadastrada</span> vêm desmarcadas.</p>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn hidden" id="imp-voltar" data-action="imp-voltar">‹ Voltar</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="button" class="btn primary hidden" id="imp-confirmar" data-action="imp-confirmar">Importar selecionadas</button>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast"></div>
 
   <script src="js/modelos-padrao.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/importar-pje.js"></script>
 </body>
 </html>

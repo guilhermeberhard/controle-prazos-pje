@@ -822,5 +822,20 @@
   document.title = (urgentes ? `(${urgentes}) ` : '') + 'Controle de Prazos PJE – PCES';
 
   // expõe utilitários para testes no console
-  window.PrazosPJE = { calcularPrazo, feriadosDoAno, preencher };
+  window.PrazosPJE = {
+    calcularPrazo, feriadosDoAno, preencher, fmt, toISO, parseISO, hoje, esc, toast, opcoes,
+    TIPOS, REQUISITANTES, STATUS,
+    config: () => state.config,
+    diligencias: () => state.diligencias,
+    /** Recebe uma lista de diligências já normalizadas e grava. */
+    adicionar(lista) {
+      const agora = new Date().toISOString();
+      lista.forEach(d => state.diligencias.push(Object.assign({
+        id: uid(), criadoEm: agora, atualizadoEm: agora, status: 'pendente', andamentos: []
+      }, d)));
+      salvar();
+      render();
+    },
+    abrirDiligencia
+  };
 })();
