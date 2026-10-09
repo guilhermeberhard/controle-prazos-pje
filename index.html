@@ -38,22 +38,37 @@
           <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
         </div>
       </div>
-      <div class="stats" id="stats"></div>
+      <h2 class="faixa responder"><span>1</span> RESPONDER <small>expedientes com ciência registrada – prazo de manifestação correndo</small></h2>
+      <div class="stats" id="stats-responder"></div>
       <div class="grid2">
-        <div class="card">
-          <h2>Atenção imediata</h2>
-          <p class="muted small">Diligências em aberto com prazo PJE vencido ou dentro da margem de alerta.</p>
+        <div class="card borda-responder">
+          <h2>Responder – atenção imediata</h2>
+          <p class="muted small">Prazo de manifestação vencido ou dentro da margem de alerta.</p>
           <div id="lista-urgentes"></div>
         </div>
         <div class="card">
           <h2>Considere pedir dilação de prazo</h2>
-          <p class="muted small">Seu prazo interno de cumprimento ultrapassa o prazo do PJE, ou o prazo PJE está próximo e a diligência depende de terceiros.</p>
+          <p class="muted small">Seu prazo interno ultrapassa a data limite do PJE, ou o prazo está próximo e a diligência depende de terceiros.</p>
           <div id="lista-dilacao"></div>
         </div>
       </div>
       <div class="card">
-        <h2>Cumpridas aguardando resposta no PJE</h2>
+        <h2>Cumpridas – falta protocolar a resposta no PJE</h2>
         <div id="lista-responder"></div>
+      </div>
+
+      <h2 class="faixa ciencia"><span>2</span> TOMAR CIÊNCIA <small>expedientes aguardando ciência – o prazo de resposta ainda não começou</small></h2>
+      <div class="stats" id="stats-ciencia"></div>
+      <div class="card table-wrap borda-ciencia">
+        <table class="tabela">
+          <thead><tr>
+            <th>Limite p/ ciência</th><th>Processo</th><th>Ato</th><th>Prazo p/ resposta</th>
+            <th>Se der ciência hoje → responder até</th><th>Se ciência tácita → responder até</th><th class="no-print">Ações</th>
+          </tr></thead>
+          <tbody id="tbody-ciencia"></tbody>
+        </table>
+        <p id="ciencia-vazio" class="vazio center hidden">Nenhum expediente aguardando ciência.</p>
+        <p class="small muted" style="padding:0 12px">As datas de resposta desta tabela são <b>estimativas</b> (dias corridos/úteis conforme Configurações, com feriados nacionais e os cadastrados). Após a ciência, a data oficial é a "Data limite prevista para manifestação" do PJE – reimporte a tela do PJE para atualizá-la.</p>
       </div>
     </section>
 
@@ -70,6 +85,11 @@
       </div>
       <div class="filtros card">
         <input type="search" id="flt-busca" placeholder="Buscar por processo, IP, órgão, descrição, responsável...">
+        <select id="flt-fase">
+          <option value="">Todas as fases</option>
+          <option value="responder">Responder</option>
+          <option value="ciencia">Tomar ciência</option>
+        </select>
         <select id="flt-status"></select>
         <select id="flt-requisitante"></select>
         <select id="flt-tipo"></select>
@@ -85,6 +105,7 @@
         <table class="tabela">
           <thead>
             <tr>
+              <th>Fase</th>
               <th>Prazo PJE</th>
               <th>Prazo interno</th>
               <th>Processo / IP</th>
@@ -113,7 +134,9 @@
         </div>
       </div>
       <p class="muted small legenda">
-        <span class="chip pje">PJE</span> prazo do sistema PJE &nbsp;
+        <span class="chip pje">RESP</span> data limite para manifestação &nbsp;
+        <span class="chip est">≈RESP</span> resposta estimada (confirmar no PJE) &nbsp;
+        <span class="chip cie">CIÊN</span> limite para tomar ciência &nbsp;
         <span class="chip interno">INT</span> prazo interno de cumprimento &nbsp;
         <span class="chip feriado">Feriado</span>
       </p>
@@ -217,24 +240,49 @@
           <label>Vara / órgão<input id="f-orgao" placeholder="Ex.: 1ª Vara Criminal de ..."></label>
         </div>
         <label>Descrição do que foi requisitado<textarea id="f-descricao" rows="3" placeholder="Ex.: Intimar a vítima X para comparecer à audiência...; juntar laudo de exame de corpo de delito..."></textarea></label>
-        <div class="row3">
-          <label>Recebido/intimado no PJE em<input type="date" id="f-recebimento"></label>
-          <label>Prazo PJE (vencimento)<input type="date" id="f-prazoPje"></label>
-          <label>Prazo interno de cumprimento<input type="date" id="f-prazoInterno"></label>
+        <div class="row2">
+          <label>Classe / assunto<input id="f-classe" placeholder="Ex.: IP – Inquérito Policial · Estelionato"></label>
+          <label>Partes<input id="f-partes" placeholder="Ex.: Polícia Civil do ES x Fulano"></label>
         </div>
-        <div class="calc">
-          <span>Calcular:</span>
-          <input type="number" id="calc-dias" min="1" value="10">
-          <select id="calc-modo"><option value="corridos">dias corridos</option><option value="uteis">dias úteis</option></select>
-          <span>a partir do recebimento →</span>
-          <button type="button" class="btn sm" data-action="calc-pje">aplicar ao Prazo PJE</button>
-          <button type="button" class="btn sm" data-action="calc-interno">aplicar ao Prazo interno</button>
-          <span id="calc-info" class="small muted"></span>
-        </div>
-        <div class="row3">
+        <fieldset class="pje-box">
+          <legend>Expediente no PJE</legend>
+          <div class="row3">
+            <label>Fase no PJE
+              <select id="f-fase">
+                <option value="ciencia">Tomar ciência (aguardando ciência)</option>
+                <option value="responder">Responder (ciência já registrada)</option>
+              </select>
+            </label>
+            <label>Ato (Decisão, Intimação eletrônica...)<input id="f-ato"></label>
+            <label>ID do expediente no PJE<input id="f-idPje" placeholder="Ex.: 19987444"></label>
+          </div>
+          <div class="row3">
+            <label>Expedição eletrônica<input type="date" id="f-recebimento"></label>
+            <label>Data limite para ciência<input type="date" id="f-limiteCiencia"></label>
+            <label>Ciência registrada em<input type="date" id="f-dataCiencia"></label>
+          </div>
+          <div class="row3">
+            <label>Prazo para resposta (dias)<input type="number" min="0" id="f-prazoDias" placeholder="vazio = sem prazo"></label>
+            <label>Data limite p/ manifestação (PJE)<input type="date" id="f-prazoPje">
+              <span class="check-inline"><input type="checkbox" id="f-prazoEstimado"> data estimada – confirmar no PJE</span>
+            </label>
+            <label>Prazo interno de cumprimento<input type="date" id="f-prazoInterno"></label>
+          </div>
+          <div class="calc">
+            <button type="button" class="btn sm" data-action="calc-resposta">Calcular data de resposta (ciência + prazo)</button>
+            <span class="sep">|</span>
+            <span>Prazo interno:</span>
+            <input type="number" id="calc-dias" min="1" value="10">
+            <select id="calc-modo"><option value="corridos">dias corridos</option><option value="uteis">dias úteis</option></select>
+            <span>a partir de</span>
+            <select id="calc-base"><option value="hoje">hoje</option><option value="ciencia">ciência</option><option value="expedicao">expedição</option></select>
+            <button type="button" class="btn sm" data-action="calc-interno">aplicar</button>
+            <span id="calc-info" class="small muted"></span>
+          </div>
+        </fieldset>
+        <div class="row2">
           <label>Responsável (escrivão/agente)<input id="f-responsavel"></label>
           <label>Status<select id="f-status"></select></label>
-          <label>ID / nº do documento no PJE<input id="f-idPje" placeholder="Opcional"></label>
         </div>
         <label class="check"><input type="checkbox" id="f-reuPreso"> Investigado/réu preso (prioridade)</label>
         <label>Observações<textarea id="f-obs" rows="2"></textarea></label>
@@ -354,12 +402,12 @@
         <div class="table-wrap">
           <table class="tabela imp-tabela">
             <thead><tr>
-              <th></th><th>Processo / IP</th><th>Tipo / requisitante</th><th>Recebido</th><th>Prazo PJE</th><th>Prazo interno</th><th>Vara / descrição</th>
+              <th></th><th>Situação</th><th>Fase</th><th>Processo / classe</th><th>Ato / ID</th><th>Datas do PJE</th><th>Resposta</th><th>Tipo / requisitante</th>
             </tr></thead>
             <tbody id="imp-tbody"></tbody>
           </table>
         </div>
-        <p class="small muted">Confira os dados antes de importar: a leitura é automática e pode precisar de ajustes. Linhas marcadas como <span class="badge atencao">já cadastrada</span> vêm desmarcadas.</p>
+        <p class="small muted">Confira os dados antes de importar: a leitura é automática e pode precisar de ajustes. Expedientes já cadastrados são reconhecidos pelo ID do PJE: se algo mudou (ex.: ciência registrada, data limite de manifestação), a linha vem marcada como <span class="badge critico">atualizar</span>; se nada mudou, vem desmarcada.</p>
       </div>
     </div>
     <div class="dlg-foot">

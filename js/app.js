@@ -8,6 +8,7 @@
   const STORAGE_KEY = 'pces-controle-prazos-v1';
 
   const TIPOS = [
+    'A definir (ler o ato no PJE)',
     'Intimação',
     'Juntada de laudo',
     'Oitiva / termo de declarações',
@@ -25,8 +26,12 @@
     aguardando: 'Aguardando terceiros',
     dilacao: 'Dilação solicitada',
     cumprida: 'Cumprida – responder no PJE',
-    respondida: 'Respondida no PJE'
+    respondida: 'Finalizada no PJE (respondida/ciente)'
   };
+  const CAMPOS_FORM = ['processo', 'inquerito', 'tipo', 'requisitante', 'orgao', 'descricao', 'recebimento', 'prazoPje', 'prazoInterno', 'responsavel', 'status', 'idPje', 'obs', 'fase', 'ato', 'limiteCiencia', 'dataCiencia', 'prazoDias', 'classe', 'partes'];
+  const FASES = { ciencia: 'Tomar ciência', responder: 'Responder' };
+  /** Prazo legal para a ciência da intimação eletrônica (Lei 11.419/2006, art. 5º, § 3º). */
+  const DIAS_CIENCIA = 10;
   const PLACEHOLDERS = {
     processo: 'Nº do processo no PJE',
     inquerito: 'Nº do inquérito/procedimento',
@@ -39,7 +44,12 @@
     prazo_interno: 'Prazo interno (dd/mm/aaaa)',
     recebimento: 'Data de recebimento no PJE',
     responsavel: 'Responsável pela diligência',
-    id_pje: 'ID do documento no PJE',
+    id_pje: 'ID do expediente/documento no PJE',
+    ato: 'Ato do PJE (Decisão, Intimação eletrônica...)',
+    classe: 'Classe / assunto',
+    partes: 'Partes',
+    data_ciencia: 'Data da ciência',
+    prazo_dias: 'Prazo para resposta (dias)',
     data_hoje: 'Data de hoje (dd/mm/aaaa)',
     data_extenso: 'Data de hoje por extenso',
     ano: 'Ano atual',
@@ -202,7 +212,7 @@
     if (dias <= Number(state.config.margem || 5)) return 'atencao';
     return 'ok';
   }
-  function badgePrazo(iso, ativo) {
+  function badgePrazo(iso, ativo, extra) {
     if (!iso) return '<span class="muted">—</span>';
     if (!ativo) return `<span class="badge neutro">${fmt(iso)}</span>`;
     const dias = diasAte(iso);
@@ -211,13 +221,73 @@
     else if (dias === 0) rot = 'Vence hoje';
     else if (dias === 1) rot = 'Vence amanhã';
     else rot = `${dias} dias`;
-    return `<span class="badge ${urgencia(dias)}">${rot}</span><span class="date-sub">${fmt(iso)}</span>`;
+    return `<span class="badge ${urgencia(dias)} ${extra || ''}">${rot}</span><span class="date-sub">${fmt(iso)}</span>`;
+  }
+  // ----- Fases do PJE
+  const fase = d => d.fase === 'ciencia' ? 'ciencia' : 'responder';
+  const faseTag = d => `<span class="fase fase-${fase(d)}">${fase(d) === 'ciencia' ? 'Tomar ciência' : 'Responder'}</span>`;
+  const temPrazoResposta = d => Number(d.prazoDias) > 0;
+  /** Estimativa da data limite de resposta contando o prazo a partir de uma data de ciência. */
+  function respostaEstimada(d, cienciaISO) {
+    if (!temPrazoResposta(d) || !cienciaISO) return null;
+    return calcularPrazo(cienciaISO, Number(d.prazoDias), state.config.contagem, state.config.prorrogar);
+  }
+  /** Data que define a urgência: limite de ciência (fase ciência) ou limite de manifestação (fase responder). */
+  const dataRef = d => fase(d) === 'ciencia' ? d.limiteCiencia : d.prazoPje;
+  function badgeResposta(d, ativo) {
+    if (fase(d) === 'ciencia') {
+      const est = respostaEstimada(d, d.limiteCiencia);
+      return `<span class="small muted">Ciência até</span><br>${badgePrazo(d.limiteCiencia, ativo, 'cie')}` +
+        (temPrazoResposta(d) ? `<span class="date-sub">resposta: ${d.prazoDias} dias${est ? ' (≈ ' + fmt(est) + ' se tácita)' : ''}</span>` : '<span class="date-sub">sem prazo de resposta</span>');
+    }
+    if (!d.prazoPje) return temPrazoResposta(d) ? `<span class="badge neutro">${d.prazoDias} dias</span><span class="date-sub">sem data limite</span>` : '<span class="muted">sem prazo</span>';
+    return badgePrazo(d.prazoPje, ativo && d.status !== 'cumprida') + (d.prazoEstimado ? '<span class="date-sub est">≈ estimado – confirmar no PJE</span>' : '');
+  }
+  /** Converte em "Responder" os expedientes cujo limite de ciência já passou (ciência tácita). */
+  function aplicarCienciaTacita() {
+    const hojeISO = toISO(hoje());
+    let mudou = false;
+    state.diligencias.forEach(d => {
+      if (!ativa(d) || fase(d) !== 'ciencia' || !d.limiteCiencia || d.limiteCiencia >= hojeISO) return;
+      d.fase = 'responder';
+      d.dataCiencia = d.limiteCiencia;
+      if (!d.prazoPje && temPrazoResposta(d)) { d.prazoPje = respostaEstimada(d, d.limiteCiencia); d.prazoEstimado = true; }
+      d.andamentos = d.andamentos || [];
+      d.andamentos.push({ data: hojeISO, texto: `Ciência tácita em ${fmt(d.limiteCiencia)} (limite para ciência). ` + (temPrazoResposta(d) ? `Prazo de resposta estimado até ${fmt(d.prazoPje)} – confirmar no PJE.` : 'Expediente sem prazo de resposta.') });
+      mudou = true;
+    });
+    if (mudou) salvar();
+  }
+  function registrarCiencia(id) {
+    const d = state.diligencias.find(x => x.id === id);
+    if (!d) return;
+    const hojeISO = toISO(hoje());
+    d.fase = 'responder';
+    d.dataCiencia = hojeISO;
+    d.andamentos = d.andamentos || [];
+    if (temPrazoResposta(d)) {
+      d.prazoPje = respostaEstimada(d, hojeISO);
+      d.prazoEstimado = true;
+      d.andamentos.push({ data: hojeISO, texto: `Ciência registrada no PJE. Prazo de ${d.prazoDias} dias – resposta estimada até ${fmt(d.prazoPje)} (confirmar no PJE).` });
+      toast(`Ciência registrada. Resposta estimada até ${fmt(d.prazoPje)} – confira a data no PJE.`);
+    } else {
+      d.andamentos.push({ data: hojeISO, texto: 'Ciência registrada no PJE (expediente sem prazo de resposta).' });
+      if (confirm('Este expediente não tem prazo de resposta. Marcar como finalizado?')) {
+        const ant = d.status; d.status = 'respondida'; aplicarMudancaStatus(d, ant);
+      }
+      toast('Ciência registrada.');
+    }
+    d.atualizadoEm = new Date().toISOString();
+    salvar();
+    render();
   }
   const statusTag = s => `<span class="st st-${s}">${esc(STATUS[s] || s)}</span>`;
   const tituloDil = d => [d.processo, d.inquerito].filter(Boolean).join(' · ') || '(sem número)';
+  const subtitulo = d => [d.classe, d.ato && (d.ato + (d.idPje ? ' (' + d.idPje + ')' : ''))].filter(Boolean).join(' · ');
   function ordenarPorPrazo(a, b) {
-    const pa = a.prazoPje || a.prazoInterno || '9999-12-31';
-    const pb = b.prazoPje || b.prazoInterno || '9999-12-31';
+    if (fase(a) !== fase(b)) return fase(a) === 'responder' ? -1 : 1; // "Responder" sempre antes de "Tomar ciência"
+    const pa = dataRef(a) || a.prazoInterno || '9999-12-31';
+    const pb = dataRef(b) || b.prazoInterno || '9999-12-31';
     if (a.reuPreso !== b.reuPreso && pa === pb) return a.reuPreso ? -1 : 1;
     return pa.localeCompare(pb);
   }
@@ -235,6 +305,7 @@
   }
 
   function render() {
+    aplicarCienciaTacita();
     renderMarca();
     renderAvisoBackup();
     const v = viewAtual();
@@ -267,54 +338,87 @@
   }
 
   // ------------------------------------------------------------------ Painel
-  function itemHTML(d, ref) {
-    const iso = ref === 'interno' ? d.prazoInterno : d.prazoPje;
+  function itemHTML(d) {
     return `<div class="item" data-action="editar" data-id="${d.id}">
-      <div>${badgePrazo(iso, true)}</div>
+      <div class="item-prazo">${badgeResposta(d, true)}</div>
       <div class="info">
-        <div class="t">${esc(d.tipo)} ${d.reuPreso ? '<span class="badge preso">PRESO</span>' : ''}</div>
-        <div class="s">${esc(tituloDil(d))} — ${esc(d.requisitante)}${d.orgao ? ' · ' + esc(d.orgao) : ''}</div>
-        <div class="s">${statusTag(d.status)} ${d.prazoInterno && ref !== 'interno' ? 'Prazo interno: ' + fmt(d.prazoInterno) : ''}</div>
+        <div class="t">${esc(d.processo || d.inquerito || '(sem número)')} ${d.reuPreso ? '<span class="badge preso">PRESO</span>' : ''}</div>
+        <div class="s">${esc(subtitulo(d) || d.tipo)}</div>
+        <div class="s">${esc(d.tipo)}${d.orgao ? ' · ' + esc(d.orgao) : ''}</div>
+        <div class="s">${statusTag(d.status)} ${d.prazoInterno ? 'Prazo interno: ' + fmt(d.prazoInterno) : ''} ${d.responsavel ? '· ' + esc(d.responsavel) : ''}</div>
       </div>
-      <button class="icon-btn" data-action="resposta" data-id="${d.id}" title="Gerar resposta">Responder</button>
+      <button class="icon-btn" data-action="resposta" data-id="${d.id}" title="Gerar minuta de resposta">Minuta</button>
     </div>`;
   }
 
   function renderPainel() {
     const at = state.diligencias.filter(ativa);
     const margem = Number(state.config.margem || 5);
-    const comPrazo = at.filter(d => d.prazoPje && d.status !== 'cumprida');
-    const vencidas = comPrazo.filter(d => diasAte(d.prazoPje) < 0);
-    const hojeL = comPrazo.filter(d => diasAte(d.prazoPje) === 0);
-    const proximas = comPrazo.filter(d => { const x = diasAte(d.prazoPje); return x > 0 && x <= margem; });
-    const responder = at.filter(d => d.status === 'cumprida');
+    const resp = at.filter(d => fase(d) === 'responder');
+    const cien = at.filter(d => fase(d) === 'ciencia');
+    const correndo = resp.filter(d => d.prazoPje && d.status !== 'cumprida');
+    const vencidas = correndo.filter(d => diasAte(d.prazoPje) < 0);
+    const hojeL = correndo.filter(d => diasAte(d.prazoPje) === 0);
+    const proximas = correndo.filter(d => { const x = diasAte(d.prazoPje); return x > 0 && x <= margem; });
+    const cumpridas = resp.filter(d => d.status === 'cumprida');
     const mesAtual = toISO(hoje()).slice(0, 7);
-    const respMes = state.diligencias.filter(d => d.status === 'respondida' && (d.concluidoEm || '').slice(0, 7) === mesAtual);
+    const finalMes = state.diligencias.filter(d => d.status === 'respondida' && (d.concluidoEm || '').slice(0, 7) === mesAtual);
+    const card = ([cor, n, l, f]) => `<div class="stat ${cor}" data-action="filtrar" data-filtro="${f}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
 
-    $('#stats').innerHTML = [
-      ['red', vencidas.length, 'Prazo PJE vencido', 'vencido'],
+    $('#stats-responder').innerHTML = [
+      ['red', vencidas.length, 'Prazo de resposta vencido', 'vencido'],
       ['orange', hojeL.length, 'Vencem hoje', 'hoje'],
       ['yellow', proximas.length, `Vencem em até ${margem} dias`, 'semana'],
-      ['blue', at.length, 'Diligências em aberto', ''],
-      ['orange', responder.length, 'Cumpridas – responder no PJE', 'cumprida'],
-      ['green', respMes.length, 'Respondidas neste mês', 'respondida']
-    ].map(([cor, n, l, f]) => `<div class="stat ${cor}" data-action="filtrar" data-filtro="${f}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+      ['blue', resp.length, 'Total a responder', 'responder'],
+      ['orange', cumpridas.length, 'Cumpridas – protocolar no PJE', 'cumprida'],
+      ['green', finalMes.length, 'Finalizadas neste mês', 'respondida']
+    ].map(card).join('');
 
-    const urg = comPrazo.filter(d => diasAte(d.prazoPje) <= margem).sort(ordenarPorPrazo);
-    $('#lista-urgentes').innerHTML = urg.length ? urg.map(d => itemHTML(d)).join('') : '<div class="vazio">Nenhum prazo crítico. </div>';
+    const cienCurta = cien.filter(d => { const x = diasAte(d.limiteCiencia); return x !== null && x <= 2; });
+    const hojeISO = toISO(hoje());
+    const nascem = cien.filter(d => { const e = respostaEstimada(d, hojeISO); return e && diasAte(e) <= 15; });
+    $('#stats-ciencia').innerHTML = [
+      ['cie', cien.length, 'Aguardando ciência', 'ciencia'],
+      ['cie', cienCurta.length, 'Ciência tácita em até 2 dias', 'ciencia'],
+      ['cie', cien.filter(d => !temPrazoResposta(d)).length, 'Sem prazo de resposta (só ciência)', 'ciencia'],
+      ['cie', nascem.length, 'Se der ciência hoje, vencem em ≤ 15 dias', 'ciencia']
+    ].map(card).join('');
 
-    const dil = at.filter(d => {
+    const urg = correndo.filter(d => diasAte(d.prazoPje) <= margem).sort(ordenarPorPrazo);
+    $('#lista-urgentes').innerHTML = urg.length ? urg.map(itemHTML).join('') : '<div class="vazio">Nenhum prazo de resposta crítico.</div>';
+
+    const dil = resp.filter(d => {
       if (!d.prazoPje || d.status === 'cumprida' || d.status === 'dilacao') return false;
       const x = diasAte(d.prazoPje);
       const internoMaior = d.prazoInterno && d.prazoInterno > d.prazoPje;
       const dependeTerceiros = d.status === 'aguardando' && x <= margem;
       return internoMaior || dependeTerceiros;
     }).sort(ordenarPorPrazo);
-    $('#lista-dilacao').innerHTML = dil.length ? dil.map(d => itemHTML(d)).join('') : '<div class="vazio">Nenhuma diligência nesta situação.</div>';
+    $('#lista-dilacao').innerHTML = dil.length ? dil.map(itemHTML).join('') : '<div class="vazio">Nenhuma diligência nesta situação.</div>';
 
-    $('#lista-responder').innerHTML = responder.length
-      ? responder.sort(ordenarPorPrazo).map(d => itemHTML(d)).join('')
-      : '<div class="vazio">Nenhuma diligência cumprida pendente de resposta.</div>';
+    $('#lista-responder').innerHTML = cumpridas.length
+      ? cumpridas.sort(ordenarPorPrazo).map(itemHTML).join('')
+      : '<div class="vazio">Nenhuma diligência cumprida pendente de protocolo.</div>';
+
+    const listaC = cien.slice().sort(ordenarPorPrazo);
+    $('#tbody-ciencia').innerHTML = listaC.map(d => {
+      const seHoje = respostaEstimada(d, hojeISO);
+      const seTacita = respostaEstimada(d, d.limiteCiencia);
+      const ganho = seHoje && seTacita ? diasAte(seTacita) - diasAte(seHoje) : 0;
+      return `<tr>
+        <td>${badgePrazo(d.limiteCiencia, true, 'cie')}</td>
+        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc(d.classe || d.inquerito || '')}</span>${d.reuPreso ? ' <span class="badge preso">PRESO</span>' : ''}</td>
+        <td>${esc(d.ato || d.tipo)}${d.idPje ? `<br><span class="muted small">ID ${esc(d.idPje)}</span>` : ''}</td>
+        <td>${temPrazoResposta(d) ? `<b>${d.prazoDias} dias</b>` : '<span class="muted">sem prazo</span>'}</td>
+        <td>${seHoje ? fmt(seHoje) : '—'}</td>
+        <td>${seTacita ? fmt(seTacita) + (ganho > 0 ? `<span class="date-sub">+${ganho} dia(s) em relação a hoje</span>` : '') : '—'}</td>
+        <td class="no-print">
+          <button class="icon-btn" data-action="ciencia" data-id="${d.id}">Dei ciência hoje</button>
+          <button class="icon-btn" data-action="editar" data-id="${d.id}">Abrir</button>
+        </td>
+      </tr>`;
+    }).join('');
+    $('#ciencia-vazio').classList.toggle('hidden', listaC.length > 0);
   }
 
   // ------------------------------------------------------------------ Lista
@@ -325,7 +429,7 @@
     opcoes('#f-tipo', TIPOS);
     opcoes('#f-requisitante', REQUISITANTES);
     opcoes('#f-status', Object.entries(STATUS));
-    ['#flt-busca', '#flt-status', '#flt-requisitante', '#flt-tipo', '#flt-urgencia'].forEach(s =>
+    ['#flt-busca', '#flt-fase', '#flt-status', '#flt-requisitante', '#flt-tipo', '#flt-urgencia'].forEach(s =>
       $(s).addEventListener('input', renderLista));
   }
 
@@ -335,20 +439,22 @@
     const req = $('#flt-requisitante').value;
     const tipo = $('#flt-tipo').value;
     const urg = $('#flt-urgencia').value;
+    const fs = $('#flt-fase').value;
     return state.diligencias.filter(d => {
+      if (fs && fase(d) !== fs) return false;
       if (st === 'ativas' && !ativa(d)) return false;
       if (st !== 'ativas' && st !== 'todas' && d.status !== st) return false;
       if (req && d.requisitante !== req) return false;
       if (tipo && d.tipo !== tipo) return false;
       if (urg) {
-        const x = diasAte(d.prazoPje);
+        const x = diasAte(dataRef(d));
         if (urg === 'vencido' && !(x !== null && x < 0)) return false;
         if (urg === 'hoje' && x !== 0) return false;
         if (urg === 'semana' && !(x !== null && x >= 0 && x <= 7)) return false;
         if (urg === 'reupreso' && !d.reuPreso) return false;
       }
       if (busca) {
-        const alvo = [d.processo, d.inquerito, d.orgao, d.descricao, d.responsavel, d.obs, d.tipo, d.idPje].join(' ').toLowerCase();
+        const alvo = [d.processo, d.inquerito, d.orgao, d.descricao, d.responsavel, d.obs, d.tipo, d.idPje, d.classe, d.partes, d.ato].join(' ').toLowerCase();
         if (!alvo.includes(busca)) return false;
       }
       return true;
@@ -360,18 +466,20 @@
     $('#tbody-diligencias').innerHTML = lista.map(d => {
       const at = ativa(d);
       return `<tr class="${at ? '' : 'final'}">
-        <td>${badgePrazo(d.prazoPje, at && d.status !== 'cumprida')}</td>
+        <td>${faseTag(d)}</td>
+        <td>${badgeResposta(d, at)}</td>
         <td>${badgePrazo(d.prazoInterno, at)}</td>
-        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc(d.inquerito || '')}</span></td>
+        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc([d.inquerito, subtitulo(d)].filter(Boolean).join(' · '))}</span>${d.partes ? `<div class="desc" title="${esc(d.partes)}">${esc(d.partes.length > 90 ? d.partes.slice(0, 88) + '…' : d.partes)}</div>` : ''}</td>
         <td>${esc(d.tipo)} ${d.reuPreso ? '<span class="badge preso">PRESO</span>' : ''}<div class="desc">${esc(d.descricao || '')}</div></td>
         <td>${esc(d.requisitante)}<br><span class="muted small">${esc(d.orgao || '')}</span></td>
         <td>${esc(d.responsavel || '—')}</td>
         <td>${statusTag(d.status)}</td>
         <td class="no-print">
           <button class="icon-btn" data-action="editar" data-id="${d.id}">Editar</button>
-          <button class="icon-btn" data-action="resposta" data-id="${d.id}">Responder</button>
+          ${at && fase(d) === 'ciencia' ? `<button class="icon-btn" data-action="ciencia" data-id="${d.id}">Dei ciência</button>` : ''}
+          <button class="icon-btn" data-action="resposta" data-id="${d.id}">Minuta</button>
           ${d.status !== 'cumprida' && at ? `<button class="icon-btn" data-action="marcar" data-status="cumprida" data-id="${d.id}">Cumprida</button>` : ''}
-          ${at ? `<button class="icon-btn" data-action="marcar" data-status="respondida" data-id="${d.id}">Respondida</button>` : `<button class="icon-btn" data-action="marcar" data-status="andamento" data-id="${d.id}">Reabrir</button>`}
+          ${at ? `<button class="icon-btn" data-action="marcar" data-status="respondida" data-id="${d.id}">Finalizar</button>` : `<button class="icon-btn" data-action="marcar" data-status="andamento" data-id="${d.id}">Reabrir</button>`}
         </td>
       </tr>`;
     }).join('');
@@ -386,10 +494,13 @@
     const inicio = addDias(mesCal, -mesCal.getDay());
     const hojeISO = toISO(hoje());
     const porDia = {};
+    const add = (iso, tipo, d) => { if (iso) (porDia[iso] = porDia[iso] || []).push([tipo, d]); };
     state.diligencias.forEach(d => {
-      if (d.prazoPje) (porDia[d.prazoPje] = porDia[d.prazoPje] || []).push(['pje', d]);
-      if (d.prazoInterno) (porDia[d.prazoInterno] = porDia[d.prazoInterno] || []).push(['interno', d]);
+      if (fase(d) === 'ciencia') add(d.limiteCiencia, 'cie', d);
+      else add(d.prazoPje, d.prazoEstimado ? 'est' : 'pje', d);
+      add(d.prazoInterno, 'interno', d);
     });
+    const ROT = { pje: 'RESP', est: '≈RESP', cie: 'CIÊN', interno: 'INT' };
     let html = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(x => `<div class="cal-dow">${x}</div>`).join('');
     for (let i = 0; i < 42; i++) {
       const dia = addDias(inicio, i);
@@ -397,8 +508,8 @@
       const fer = nomeFeriado(dia);
       const cls = ['cal-dia', dia.getMonth() !== mes ? 'fora' : '', (dia.getDay() === 0 || dia.getDay() === 6) ? 'fds' : '', iso === hojeISO ? 'hoje' : ''].join(' ');
       const evs = (porDia[iso] || []).map(([tipo, d]) => {
-        const feito = !ativa(d) || (tipo === 'pje' && d.status === 'cumprida');
-        return `<span class="cal-ev ${feito ? 'feito' : tipo}" data-action="editar" data-id="${d.id}" title="${esc(d.tipo + ' – ' + tituloDil(d))}">${tipo === 'pje' ? 'PJE' : 'INT'} · ${esc(d.processo || d.inquerito || d.tipo)}</span>`;
+        const feito = !ativa(d) || ((tipo === 'pje' || tipo === 'est') && d.status === 'cumprida');
+        return `<span class="cal-ev ${feito ? 'feito' : tipo}" data-action="editar" data-id="${d.id}" title="${esc((subtitulo(d) || d.tipo) + ' – ' + tituloDil(d))}">${ROT[tipo]} · ${esc(d.processo || d.inquerito || d.tipo)}</span>`;
       }).join('');
       html += `<div class="${cls}"><div class="num"><span>${dia.getDate()}</span>${fer ? `<span class="chip feriado" title="${esc(fer)}">${esc(fer.length > 14 ? fer.slice(0, 13) + '…' : fer)}</span>` : ''}</div>${evs}</div>`;
     }
@@ -411,13 +522,17 @@
     const f = d || {
       processo: '', inquerito: '', tipo: TIPOS[0], requisitante: REQUISITANTES[0], orgao: '', descricao: '',
       recebimento: toISO(hoje()), prazoPje: '', prazoInterno: '', responsavel: '', status: 'pendente',
-      idPje: '', reuPreso: false, obs: '', andamentos: []
+      idPje: '', reuPreso: false, obs: '', andamentos: [], fase: 'ciencia',
+      limiteCiencia: toISO(addDias(hoje(), DIAS_CIENCIA)), dataCiencia: '', prazoDias: '', ato: '', classe: '', partes: ''
     };
     $('#dlg-dil-titulo').textContent = d ? 'Editar diligência' : 'Nova diligência';
     $('#f-id').value = d ? d.id : '';
-    ['processo', 'inquerito', 'tipo', 'requisitante', 'orgao', 'descricao', 'recebimento', 'prazoPje', 'prazoInterno', 'responsavel', 'status', 'idPje', 'obs']
-      .forEach(k => { $('#f-' + k).value = f[k] || ''; });
+    CAMPOS_FORM
+      .forEach(k => { $('#f-' + k).value = f[k] == null ? '' : f[k]; });
+    $('#f-fase').value = fase(f);
     $('#f-reuPreso').checked = !!f.reuPreso;
+    $('#f-prazoEstimado').checked = !!f.prazoEstimado;
+    if (Number(f.prazoDias) > 0) $('#calc-dias').value = f.prazoDias;
     $('#calc-modo').value = state.config.contagem;
     $('#calc-info').textContent = '';
     andamentosForm = (f.andamentos || []).slice();
@@ -436,14 +551,17 @@
   function salvarDiligencia() {
     const id = $('#f-id').value;
     const dados = {};
-    ['processo', 'inquerito', 'tipo', 'requisitante', 'orgao', 'descricao', 'recebimento', 'prazoPje', 'prazoInterno', 'responsavel', 'status', 'idPje', 'obs']
+    CAMPOS_FORM
       .forEach(k => { dados[k] = $('#f-' + k).value.trim(); });
     dados.reuPreso = $('#f-reuPreso').checked;
+    dados.prazoEstimado = $('#f-prazoEstimado').checked && !!dados.prazoPje;
+    dados.prazoDias = dados.prazoDias === '' ? '' : Math.max(0, Number(dados.prazoDias) || 0);
     // inclui andamento digitado e não adicionado
     if ($('#and-texto').value.trim()) andamentosForm.push({ data: $('#and-data').value || toISO(hoje()), texto: $('#and-texto').value.trim() });
     dados.andamentos = andamentosForm;
     if (!dados.processo && !dados.inquerito) { alert('Informe o número do processo ou do inquérito.'); return false; }
-    if (!dados.prazoPje && !dados.prazoInterno) {
+    if (dados.fase === 'responder' && !dados.dataCiencia && dados.limiteCiencia && dados.limiteCiencia < toISO(hoje())) dados.dataCiencia = dados.limiteCiencia;
+    if (!dados.prazoPje && !dados.prazoInterno && !dados.limiteCiencia) {
       if (!confirm('Nenhum prazo foi informado. Deseja salvar mesmo assim?')) return false;
     }
     const agora = new Date().toISOString();
@@ -540,10 +658,12 @@
     const autoridade = !d ? '' : d.requisitante === 'Juiz(a)' ? 'Juiz(a) de Direito'
       : d.requisitante === 'Ministério Público' ? 'Promotor(a) de Justiça' : '';
     return {
-      processo: d && d.processo, inquerito: d && d.inquerito, tipo: d && d.tipo ? d.tipo.toLowerCase() : '',
+      processo: d && d.processo, inquerito: d && (d.inquerito || d.classe), tipo: d && d.tipo ? d.tipo.toLowerCase() : '',
       descricao: d && d.descricao, requisitante: d && d.requisitante, autoridade,
       orgao: d && d.orgao, prazo_pje: d && fmt(d.prazoPje), prazo_interno: d && fmt(d.prazoInterno),
       recebimento: d && fmt(d.recebimento), responsavel: d && d.responsavel, id_pje: d && d.idPje,
+      ato: d && d.ato, classe: d && d.classe, partes: d && d.partes, data_ciencia: d && fmt(d.dataCiencia),
+      prazo_dias: d && d.prazoDias ? String(d.prazoDias) : '',
       data_hoje: fmt(h), data_extenso: extenso(h), ano: String(h.getFullYear()),
       delegado: c.delegado, cargo: c.cargo, delegacia: c.delegacia, cidade: c.cidade
     };
@@ -561,7 +681,7 @@
     const ativas = state.diligencias.filter(ativa).sort(ordenarPorPrazo);
     const dSel = dilId ? state.diligencias.find(x => x.id === dilId) : null;
     const listaD = dSel && !ativa(dSel) ? [dSel].concat(ativas) : ativas;
-    opcoes('#r-diligencia', listaD.map(d => [d.id, `${d.prazoPje ? fmt(d.prazoPje) + ' – ' : ''}${d.tipo} – ${tituloDil(d)}`]), '(sem diligência – preencher manualmente)');
+    opcoes('#r-diligencia', listaD.map(d => [d.id, `${FASES[fase(d)]}${dataRef(d) ? ' até ' + fmt(dataRef(d)) : ''} – ${tituloDil(d)} – ${d.ato || d.tipo}`]), '(sem diligência – preencher manualmente)');
     const mods = state.modelos.slice().sort((a, b) => (a.categoria + a.titulo).localeCompare(b.categoria + b.titulo, 'pt-BR'));
     opcoes('#r-modelo', mods.map(m => [m.id, `${m.categoria} – ${m.titulo}`]));
     $('#r-diligencia').value = dilId || '';
@@ -666,11 +786,12 @@
     leitor.readAsText(arquivo);
   }
   function exportarCSV() {
-    const cab = ['Processo', 'Inquérito', 'Tipo', 'Requisitante', 'Órgão', 'Descrição', 'Recebimento', 'Prazo PJE', 'Prazo interno', 'Dias p/ prazo PJE', 'Responsável', 'Status', 'Réu preso', 'ID PJE', 'Observações'];
+    const cab = ['Fase', 'Processo', 'Inquérito', 'Classe/assunto', 'Partes', 'Ato', 'ID PJE', 'Tipo', 'Requisitante', 'Órgão', 'Descrição', 'Expedição', 'Limite ciência', 'Ciência em', 'Prazo (dias)', 'Limite manifestação', 'Estimado?', 'Prazo interno', 'Dias p/ prazo', 'Responsável', 'Status', 'Réu preso', 'Observações'];
     const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
     const linhas = filtradas().map(d => [
-      d.processo, d.inquerito, d.tipo, d.requisitante, d.orgao, d.descricao, fmt(d.recebimento), fmt(d.prazoPje), fmt(d.prazoInterno),
-      d.prazoPje ? diasAte(d.prazoPje) : '', d.responsavel, STATUS[d.status], d.reuPreso ? 'Sim' : 'Não', d.idPje, d.obs
+      FASES[fase(d)], d.processo, d.inquerito, d.classe, d.partes, d.ato, d.idPje, d.tipo, d.requisitante, d.orgao, d.descricao,
+      fmt(d.recebimento), fmt(d.limiteCiencia), fmt(d.dataCiencia), d.prazoDias, fmt(d.prazoPje), d.prazoEstimado ? 'Sim' : '',
+      fmt(d.prazoInterno), dataRef(d) ? diasAte(dataRef(d)) : '', d.responsavel, STATUS[d.status], d.reuPreso ? 'Sim' : 'Não', d.obs
     ].map(q).join(';'));
     baixar(`diligencias-${toISO(hoje())}.csv`, '﻿' + [cab.map(q).join(';')].concat(linhas).join('\r\n'), 'text/csv;charset=utf-8');
   }
@@ -682,6 +803,9 @@
     $('#flt-tipo').value = '';
     $('#flt-status').value = 'ativas';
     $('#flt-urgencia').value = '';
+    $('#flt-fase').value = '';
+    if (f === 'vencido' || f === 'hoje' || f === 'semana' || f === 'responder' || f === 'cumprida') $('#flt-fase').value = 'responder';
+    if (f === 'ciencia') $('#flt-fase').value = 'ciencia';
     if (f === 'vencido' || f === 'hoje' || f === 'semana') $('#flt-urgencia').value = f;
     if (f === 'cumprida' || f === 'respondida') $('#flt-status').value = f;
     mostrar('diligencias');
@@ -700,6 +824,7 @@
       case 'editar': abrirDiligencia(id); break;
       case 'resposta': e.stopPropagation(); abrirResposta(id); break;
       case 'marcar': marcarStatus(id, el.dataset.status); break;
+      case 'ciencia': e.stopPropagation(); registrarCiencia(id); break;
       case 'filtrar': filtrarPeloPainel(el.dataset.filtro); break;
       case 'excluir-diligencia': {
         const fid = $('#f-id').value;
@@ -709,16 +834,28 @@
         }
         break;
       }
-      case 'calc-pje':
+      case 'calc-resposta': {
+        const dias = Number($('#f-prazoDias').value);
+        const base = $('#f-dataCiencia').value || $('#f-limiteCiencia').value;
+        if (!(dias > 0)) { alert('Informe o prazo para resposta (em dias).'); break; }
+        if (!base) { alert('Informe a data da ciência (ou o limite para ciência).'); break; }
+        const r = calcularPrazo(base, dias, state.config.contagem, state.config.prorrogar);
+        $('#f-prazoPje').value = r;
+        $('#f-prazoEstimado').checked = true;
+        $('#calc-info').textContent = `Resposta: ${dias} dias a partir de ${fmt(base)}${$('#f-dataCiencia').value ? '' : ' (ciência tácita)'} = ${fmt(r)} – estimativa; confira a data no PJE.`;
+        break;
+      }
       case 'calc-interno': {
-        const inicio = $('#f-recebimento').value;
-        if (!inicio) { alert('Informe a data de recebimento no PJE.'); break; }
+        const b = $('#calc-base').value;
+        const inicio = b === 'ciencia' ? ($('#f-dataCiencia').value || $('#f-limiteCiencia').value)
+          : b === 'expedicao' ? $('#f-recebimento').value : toISO(hoje());
+        if (!inicio) { alert('A data base escolhida não está preenchida.'); break; }
         const modo = $('#calc-modo').value;
         const n = Number($('#calc-dias').value);
         const r = calcularPrazo(inicio, n, modo, state.config.prorrogar);
         if (!r) break;
-        $(el.dataset.action === 'calc-pje' ? '#f-prazoPje' : '#f-prazoInterno').value = r;
-        $('#calc-info').textContent = `${n} dias ${modo === 'uteis' ? 'úteis' : 'corridos'} a partir de ${fmt(inicio)} = ${fmt(r)} (${parseISO(r).toLocaleDateString('pt-BR', { weekday: 'long' })})`;
+        $('#f-prazoInterno').value = r;
+        $('#calc-info').textContent = `Prazo interno: ${n} dias ${modo === 'uteis' ? 'úteis' : 'corridos'} a partir de ${fmt(inicio)} = ${fmt(r)} (${parseISO(r).toLocaleDateString('pt-BR', { weekday: 'long' })})`;
         break;
       }
       case 'add-andamento': {
@@ -818,13 +955,13 @@
   let inicial = 'painel';
   try { inicial = sessionStorage.getItem('pces-view') || 'painel'; } catch (e) { /* ignorado */ }
   mostrar(inicial);
-  const urgentes = state.diligencias.filter(d => ativa(d) && d.status !== 'cumprida' && d.prazoPje && diasAte(d.prazoPje) <= 0).length;
+  const urgentes = state.diligencias.filter(d => ativa(d) && fase(d) === 'responder' && d.status !== 'cumprida' && d.prazoPje && diasAte(d.prazoPje) <= 0).length;
   document.title = (urgentes ? `(${urgentes}) ` : '') + 'Controle de Prazos PJE – PCES';
 
   // expõe utilitários para testes no console
   window.PrazosPJE = {
     calcularPrazo, feriadosDoAno, preencher, fmt, toISO, parseISO, hoje, esc, toast, opcoes,
-    TIPOS, REQUISITANTES, STATUS,
+    TIPOS, REQUISITANTES, STATUS, FASES, DIAS_CIENCIA, addDias, respostaEstimada,
     config: () => state.config,
     diligencias: () => state.diligencias,
     /** Recebe uma lista de diligências já normalizadas e grava. */
@@ -836,6 +973,15 @@
       salvar();
       render();
     },
+    /** Atualiza um registro existente com dados vindos do PJE. */
+    atualizar(id, campos, nota) {
+      const d = state.diligencias.find(x => x.id === id);
+      if (!d) return;
+      Object.assign(d, campos, { atualizadoEm: new Date().toISOString() });
+      d.andamentos = d.andamentos || [];
+      if (nota) d.andamentos.push({ data: toISO(hoje()), texto: nota });
+    },
+    salvarERender() { salvar(); render(); },
     abrirDiligencia
   };
 })();

@@ -129,8 +129,8 @@
     return r;
   }
 
-  /** Divide um texto com vários processos (lista de expedientes) em trechos. */
-  function analisarLista(texto) {
+  /** Divide um texto com vários processos (layout genérico) em trechos. */
+  function analisarListaGenerica(texto) {
     texto = limpar(texto);
     const ocorr = [...texto.matchAll(RE_CNJ)];
     if (!ocorr.length) return [];
@@ -163,43 +163,217 @@
     return extrair(texto, proc);
   }
 
+  // =================================================================== LAYOUT DO PJE-TJES (Expedientes)
+  /*
+   * Cada expediente na tela "Expedientes" do PJE tem este formato (copiado com Ctrl+A / Ctrl+C):
+   *   [TOMAR CIÊNCIA | RESPONDER]
+   *   POLÍCIA CIVIL DO ESTADO DO ESPÍRITO SANTO
+   *   Decisão (19987444)                                  <- ato e ID do expediente
+   *   Expedição eletrônica (06/10/2026 16:24)
+   *   Prazo:10 dias | Prazo: sem prazo
+   *   [O sistema registrou ciência em 01/10/2026 23:59]
+   *   [Data limite prevista para ciência: 16/10/2026 23:59]
+   *   [Data limite prevista para manifestação: 19/10/2026 23:59]
+   *   AuPrFl 5001881-17.2026.8.08.0001  Homicídio Qualificado
+   *   POLÍCIA CIVIL DO ESTADO DO ESPÍRITO SANTO X FULANO
+   *   /Afonso Cláudio - 2ª Vara
+   *   Último movimento: 08/10/2026 15:55 - Juntada de ...
+   */
+  const SIGLAS = {
+    IP: 'Inquérito Policial',
+    AuPrFl: 'Auto de Prisão em Flagrante',
+    PePrPr: 'Pedido de Prisão Preventiva',
+    MPCA: 'Medida de Proteção à Criança e Adolescente',
+    TCO: 'Termo Circunstanciado de Ocorrência'
+  };
+  const RE_ATO = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ ]{2,45}?)\s*\((\d{6,12})\)/g;
+  const D = '(\\d{1,2}\\/\\d{1,2}\\/\\d{4})';
+  const pega = (txt, re) => { const m = txt.match(re); return m ? m[1] : ''; };
+  const isoBR = br => { if (!br) return ''; const [d, m, a] = br.split('/'); return isoDe(d, m, a) || ''; };
+
+  function ehLayoutExpedientes(texto) {
+    return /Expedi[çc][ãa]o eletr[ôo]nica|limite prevista para (?:ci[êe]ncia|manifesta)|registrou ci[êe]ncia/i.test(texto);
+  }
+
+  function analisarExpedientes(texto) {
+    texto = limpar(texto);
+    // âncoras: "Ato (ID)" seguidos, no mesmo bloco, de "Expedição"
+    const ancoras = [...texto.matchAll(RE_ATO)].filter(m => {
+      const depois = texto.slice(m.index, m.index + 250);
+      return /Expedi[çc][ãa]o/i.test(depois) && !/expedi[çc][ãa]o/i.test(m[1]);
+    });
+    const cfg = P.config();
+    return ancoras.map((a, k) => {
+      const ini = a.index;
+      const fimBruto = k + 1 < ancoras.length ? ancoras[k + 1].index : texto.length;
+      let bloco = texto.slice(ini, fimBruto);
+      const um = bloco.match(/[ÚU]ltimo movimento:[^\n\t]*/);
+      if (um) bloco = bloco.slice(0, um.index + um[0].length);
+      // trecho antes do ato (botão TOMAR CIÊNCIA / RESPONDER e destinatário)
+      const antes = texto.slice(k > 0 ? ancoras[k - 1].index : 0, ini);
+      const umAnt = [...antes.matchAll(/[ÚU]ltimo movimento:[^\n\t]*/g)].pop();
+      const preambulo = umAnt ? antes.slice(umAnt.index + umAnt[0].length) : antes.slice(-250);
+
+      const r = {
+        processo: pega(bloco, /(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})/), inquerito: '',
+        ato: a[1].replace(/^(?:TOMAR CI[ÊE]NCIA|RESPONDER)\s*/i, '').trim(), idPje: a[2],
+        tipo: 'A definir (ler o ato no PJE)', requisitante: 'Juiz(a)', orgao: '', descricao: '',
+        recebimento: isoBR(pega(bloco, new RegExp('Expedi[çc][ãa]o[^(\\n]*\\(\\s*' + D, 'i'))),
+        limiteCiencia: isoBR(pega(bloco, new RegExp('limite prevista para ci[êe]ncia:?\\s*' + D, 'i'))),
+        dataCiencia: isoBR(pega(bloco, new RegExp('(?:registrou ci[êe]ncia em|ci[êe]ncia registrada em|ci[êe]ncia em)\\s*' + D, 'i'))),
+        prazoPje: isoBR(pega(bloco, new RegExp('limite prevista para (?:manifesta[çc][ãa]o|resposta)[^\\d\\n]{0,5}' + D, 'i'))),
+        prazoDias: '', prazoEstimado: false, prazoInterno: '', classe: '', partes: '', obs: '',
+        reuPreso: false, notas: []
+      };
+      const pz = bloco.match(/Prazo:\s*(\d{1,3})\s*(dias?|horas?)/i);
+      if (pz) r.prazoDias = /hora/i.test(pz[2]) ? Math.max(1, Math.ceil(Number(pz[1]) / 24)) : Number(pz[1]);
+      const semPrazo = /Prazo:\s*sem prazo/i.test(bloco);
+
+      // fase: pelos dados do expediente; na falta, pelo botão exibido no PJE
+      if (r.dataCiencia || r.prazoPje) r.fase = 'responder';
+      else if (r.limiteCiencia) r.fase = 'ciencia';
+      else if (/TOMAR CI[ÊE]NCIA/i.test(preambulo)) r.fase = 'ciencia';
+      else if (/RESPONDER/i.test(preambulo)) r.fase = 'responder';
+      else r.fase = 'ciencia';
+
+      if (r.fase === 'ciencia' && !r.limiteCiencia && r.recebimento) {
+        r.limiteCiencia = P.toISO(P.addDias(P.parseISO(r.recebimento), P.DIAS_CIENCIA));
+        r.notas.push(`limite de ciência calculado (expedição + ${P.DIAS_CIENCIA} dias)`);
+      }
+      if (r.fase === 'responder' && !r.prazoPje && r.prazoDias && (r.dataCiencia || r.limiteCiencia)) {
+        r.prazoPje = P.respostaEstimada(r, r.dataCiencia || r.limiteCiencia);
+        r.prazoEstimado = true;
+        r.notas.push('data de resposta estimada – confirmar no PJE');
+      }
+      if (semPrazo) r.notas.push('sem prazo de resposta');
+
+      // classe, assunto, partes, vara
+      const cl = bloco.match(/([A-Za-z]{2,10})\s+\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}[ \t]*([^\n\t]*)/);
+      if (cl) {
+        const sigla = cl[1];
+        const assunto = cl[2].replace(/^[^A-Za-zÀ-ÿ]+/, '').trim();
+        r.classe = (SIGLAS[sigla] ? `${sigla} – ${SIGLAS[sigla]}` : sigla) + (assunto ? ' · ' + assunto : '');
+      }
+      r.partes = pega(bloco, /\n[ \t]*([^\n\t]{3,200}?\sX\s[^\n\t]{2,200})/).trim();
+      const vara = pega(bloco, /(?:^|\n|\t)[ \t]*\/\s*([^\n\t]+)/).trim();
+      if (vara) { const pt = vara.split(/\s+-\s+/); r.orgao = pt.length === 2 ? `${pt[1]} de ${pt[0]}` : vara; }
+      const mov = pega(bloco, /[ÚU]ltimo movimento:\s*([^\n\t]+)/).trim();
+      if (mov) r.obs = 'Último movimento no PJE: ' + mov;
+      r.descricao = ''; // o que foi determinado só se sabe lendo o ato no PJE
+      if (/minist[ée]rio p[úu]blico|promotor/i.test(r.ato)) r.requisitante = 'Ministério Público';
+      if (!r.processo) r.notas.push('nº do processo não identificado');
+      return r;
+    });
+  }
+
+  /** Ponto de entrada para texto colado/enviado pelo favorito. */
+  function analisarLista(texto) {
+    if (ehLayoutExpedientes(texto)) {
+      const r = analisarExpedientes(texto);
+      if (r.length) return r;
+    }
+    return analisarListaGenerica(texto).map(normalizarGenerico);
+  }
+  /** Itens lidos por regras genéricas (outros layouts e PDFs) entram na fase "Responder". */
+  function normalizarGenerico(it) {
+    const estimado = it.notas.some(n => /calculado/.test(n));
+    return Object.assign({ fase: 'responder', ato: '', limiteCiencia: '', dataCiencia: '', prazoDias: '', classe: '', partes: '', obs: '' },
+      it, { prazoEstimado: estimado });
+  }
+
   // =================================================================== PRÉVIA
   let itens = [];
 
-  function marcarDuplicadas(lista) {
-    const existentes = P.diligencias().filter(d => d.status !== 'respondida');
+  /** Procura o mesmo expediente já cadastrado: pelo ID do PJE ou por processo + ato + data de expedição. */
+  function encontrar(it) {
+    const todas = P.diligencias();
+    if (it.idPje) {
+      const d = todas.find(x => x.idPje && String(x.idPje) === String(it.idPje));
+      if (d) return d;
+    }
+    if (it.processo && it.recebimento) {
+      return todas.find(x => x.processo === it.processo && x.recebimento === it.recebimento && (x.ato || '') === (it.ato || '')) || null;
+    }
+    return null;
+  }
+  /** Campos que o PJE trouxe e que mudaram em relação ao registro existente. */
+  function diferencas(d, it) {
+    const c = {};
+    const faseD = d.fase === 'ciencia' ? 'ciencia' : 'responder';
+    if (faseD === 'ciencia' && it.fase === 'responder') c.fase = 'responder';
+    if (it.limiteCiencia && it.limiteCiencia !== d.limiteCiencia) c.limiteCiencia = it.limiteCiencia;
+    if (it.dataCiencia && it.dataCiencia !== d.dataCiencia) c.dataCiencia = it.dataCiencia;
+    if (it.prazoDias !== '' && Number(it.prazoDias) !== Number(d.prazoDias)) c.prazoDias = it.prazoDias;
+    if (it.prazoPje && !it.prazoEstimado && (it.prazoPje !== d.prazoPje || d.prazoEstimado)) { c.prazoPje = it.prazoPje; c.prazoEstimado = false; }
+    if (it.prazoPje && it.prazoEstimado && !d.prazoPje) { c.prazoPje = it.prazoPje; c.prazoEstimado = true; }
+    if (it.obs && it.obs !== d.obs && !d.obs) c.obs = it.obs;
+    ['ato', 'classe', 'partes', 'orgao'].forEach(k => { if (it[k] && !d[k]) c[k] = it[k]; });
+    if (it.idPje && !d.idPje) c.idPje = it.idPje;
+    return c;
+  }
+  const ROTULOS = { fase: 'fase → Responder', limiteCiencia: 'limite de ciência', dataCiencia: 'data da ciência', prazoDias: 'prazo (dias)', prazoPje: 'data limite de manifestação' };
+
+  function classificar(lista) {
     lista.forEach(it => {
-      it.dup = !!it.processo && existentes.some(d => d.processo === it.processo && (!it.prazoPje || !d.prazoPje || d.prazoPje === it.prazoPje));
-      it.sel = !it.dup;
+      const d = encontrar(it);
+      it.existente = d ? d.id : null;
+      if (!d) { it.situacao = 'novo'; it.sel = true; return; }
+      if (d.status === 'respondida') { it.situacao = 'finalizado'; it.sel = false; return; }
+      it.mudancas = diferencas(d, it);
+      const relevantes = Object.keys(it.mudancas).filter(k => ROTULOS[k]);
+      it.situacao = relevantes.length ? 'atualizar' : 'igual';
+      it.sel = relevantes.length > 0;
+      it.textoMudancas = relevantes.map(k => ROTULOS[k] + (k === 'prazoPje' || k.endsWith('Ciencia') ? ': ' + P.fmt(it.mudancas[k]) : k === 'prazoDias' ? ': ' + it.mudancas[k] : '')).join('; ');
     });
     return lista;
   }
 
   function mostrarPrevia(lista, origem) {
-    itens = marcarDuplicadas(lista);
+    itens = classificar(lista);
     if (!itens.length) {
-      alert('Não foi encontrado nenhum número de processo (formato 0000000-00.0000.0.00.0000) no conteúdo. Verifique se copiou a tela correta do PJE.');
+      alert('Não foi encontrado nenhum expediente/número de processo no conteúdo. Verifique se copiou a tela de Expedientes do PJE.');
       return;
     }
-    const dups = itens.filter(i => i.dup).length;
-    $('#imp-resumo-texto').innerHTML = `<b>${itens.length}</b> expediente(s) encontrado(s)${origem ? ' em ' + esc(origem) : ''}${dups ? ` · ${dups} já cadastrado(s)` : ''}.`;
+    const n = t => itens.filter(i => i.situacao === t).length;
+    const nc = itens.filter(i => i.fase === 'ciencia').length;
+    $('#imp-resumo-texto').innerHTML = `<b>${itens.length}</b> expediente(s)${origem ? ' em ' + esc(origem) : ''}: ` +
+      `<span class="fase fase-responder">${itens.length - nc} responder</span> <span class="fase fase-ciencia">${nc} tomar ciência</span> · ` +
+      `${n('novo')} novo(s), ${n('atualizar')} a atualizar, ${n('igual') + n('finalizado')} sem alteração.`;
     const optT = sel => P.TIPOS.map(t => `<option${t === sel ? ' selected' : ''}>${esc(t)}</option>`).join('');
     const optR = sel => P.REQUISITANTES.map(t => `<option${t === sel ? ' selected' : ''}>${esc(t)}</option>`).join('');
-    $('#imp-tbody').innerHTML = itens.map((it, i) => `
-      <tr data-i="${i}" class="${it.dup ? 'dup' : ''}">
+    const SIT = {
+      novo: '<span class="badge ok">novo</span>',
+      atualizar: '<span class="badge critico">atualizar</span>',
+      igual: '<span class="badge neutro">já cadastrado – sem alteração</span>',
+      finalizado: '<span class="badge neutro">já finalizado</span>'
+    };
+    $('#imp-tbody').innerHTML = itens.map((it, i) => {
+      const ex = !!it.existente;
+      return `
+      <tr data-i="${i}" class="${it.situacao === 'novo' ? '' : 'dup'}">
         <td><input type="checkbox" class="imp-sel" ${it.sel ? 'checked' : ''}></td>
+        <td>${SIT[it.situacao]}${it.textoMudancas ? `<span class="nota">${esc(it.textoMudancas)}</span>` : ''}</td>
+        <td><select data-k="fase"><option value="responder"${it.fase === 'responder' ? ' selected' : ''}>Responder</option><option value="ciencia"${it.fase === 'ciencia' ? ' selected' : ''}>Tomar ciência</option></select></td>
         <td>
           <input data-k="processo" value="${esc(it.processo)}" placeholder="Nº do processo">
-          <input data-k="inquerito" value="${esc(it.inquerito)}" placeholder="Nº do IP">
-          ${it.dup ? '<span class="badge atencao">já cadastrada</span>' : ''}
-          ${it.reuPreso ? '<span class="badge preso">PRESO</span>' : ''}
+          <span class="small muted">${esc(it.classe || it.inquerito || '')}</span>
+          ${it.partes ? `<span class="small muted d-block">${esc(it.partes)}</span>` : ''}
         </td>
-        <td><select data-k="tipo">${optT(it.tipo)}</select><select data-k="requisitante">${optR(it.requisitante)}</select></td>
-        <td><input type="date" data-k="recebimento" value="${esc(it.recebimento)}"></td>
-        <td><input type="date" data-k="prazoPje" value="${esc(it.prazoPje)}">${it.notas.map(n => `<span class="nota">${esc(n)}</span>`).join('')}</td>
-        <td><input type="date" data-k="prazoInterno" value="${esc(it.prazoInterno)}"></td>
-        <td><input data-k="orgao" value="${esc(it.orgao)}" placeholder="Vara / órgão"><textarea data-k="descricao" rows="3">${esc(it.descricao)}</textarea></td>
-      </tr>`).join('');
+        <td><input data-k="ato" value="${esc(it.ato || '')}" placeholder="Ato"><input data-k="idPje" value="${esc(it.idPje || '')}" placeholder="ID"></td>
+        <td class="datas">
+          <span>Expedição</span><input type="date" data-k="recebimento" value="${esc(it.recebimento)}">
+          <span>Limite ciência</span><input type="date" data-k="limiteCiencia" value="${esc(it.limiteCiencia || '')}">
+          <span>Ciência em</span><input type="date" data-k="dataCiencia" value="${esc(it.dataCiencia || '')}">
+        </td>
+        <td class="datas">
+          <span>Prazo (dias)</span><input type="number" min="0" data-k="prazoDias" value="${esc(it.prazoDias)}" placeholder="sem prazo">
+          <span>Limite manifestação</span><input type="date" data-k="prazoPje" value="${esc(it.prazoPje)}">
+          ${it.notas.map(x => `<span class="nota">${esc(x)}</span>`).join('')}
+        </td>
+        <td>${ex ? '<span class="small muted">mantém tipo, responsável e status já cadastrados</span>'
+          : `<select data-k="tipo">${optT(it.tipo)}</select><select data-k="requisitante">${optR(it.requisitante)}</select>`}</td>
+      </tr>`;
+    }).join('');
     $('#imp-marcar-todos').checked = itens.every(i => i.sel);
     etapa(2);
   }
@@ -207,8 +381,11 @@
   function lerPrevia() {
     document.querySelectorAll('#imp-tbody tr').forEach(tr => {
       const it = itens[Number(tr.dataset.i)];
+      const antes = { prazoPje: it.prazoPje };
       it.sel = tr.querySelector('.imp-sel').checked;
       tr.querySelectorAll('[data-k]').forEach(el => { it[el.dataset.k] = el.value.trim(); });
+      if (it.prazoDias !== '') it.prazoDias = Number(it.prazoDias) || '';
+      if (it.prazoPje !== antes.prazoPje) it.prazoEstimado = false; // editado manualmente
     });
   }
 
@@ -216,17 +393,31 @@
     lerPrevia();
     const sel = itens.filter(i => i.sel);
     if (!sel.length) { alert('Nenhuma linha selecionada.'); return; }
-    const semProc = sel.filter(i => !i.processo && !i.inquerito);
-    if (semProc.length) { alert('Há linha(s) selecionada(s) sem número de processo ou IP.'); return; }
+    if (sel.some(i => !i.existente && !i.processo && !i.inquerito)) { alert('Há linha(s) selecionada(s) sem número de processo.'); return; }
     const hojeISO = P.toISO(P.hoje());
-    P.adicionar(sel.map(i => ({
-      processo: i.processo, inquerito: i.inquerito, tipo: i.tipo, requisitante: i.requisitante, orgao: i.orgao,
-      descricao: i.descricao, recebimento: i.recebimento, prazoPje: i.prazoPje, prazoInterno: i.prazoInterno,
-      responsavel: '', idPje: i.idPje, reuPreso: !!i.reuPreso, obs: '',
-      andamentos: [{ data: hojeISO, texto: 'Importada do PJE' + (i.notas.length ? ' (' + i.notas.join('; ') + ')' : '') }]
-    })));
+    const novos = sel.filter(i => !i.existente);
+    const atual = sel.filter(i => i.existente);
+    atual.forEach(i => {
+      const d = P.diligencias().find(x => x.id === i.existente);
+      const c = diferencas(d, i);
+      if (c.fase === 'responder' && !c.dataCiencia && !d.dataCiencia) c.dataCiencia = i.dataCiencia || d.limiteCiencia || hojeISO;
+      const txt = Object.keys(c).filter(k => ROTULOS[k]).map(k => ROTULOS[k] + (/prazoPje|Ciencia/.test(k) ? ' ' + P.fmt(c[k]) : k === 'prazoDias' ? ' ' + c[k] : '')).join('; ');
+      P.atualizar(i.existente, c, 'Atualizado pela importação do PJE' + (txt ? ': ' + txt : '') + (c.prazoEstimado ? ' (estimado)' : ''));
+    });
+    if (novos.length) {
+      P.adicionar(novos.map(i => ({
+        fase: i.fase, processo: i.processo, inquerito: i.inquerito || '', classe: i.classe || '', partes: i.partes || '',
+        ato: i.ato || '', idPje: i.idPje || '', tipo: i.tipo, requisitante: i.requisitante, orgao: i.orgao || '',
+        descricao: i.descricao || '', recebimento: i.recebimento || '', limiteCiencia: i.limiteCiencia || '',
+        dataCiencia: i.dataCiencia || '', prazoDias: i.prazoDias, prazoPje: i.prazoPje || '', prazoEstimado: !!i.prazoEstimado && !!i.prazoPje,
+        prazoInterno: i.prazoInterno || '', responsavel: '', reuPreso: !!i.reuPreso, obs: i.obs || '',
+        andamentos: [{ data: hojeISO, texto: 'Importado do PJE' + (i.notas.length ? ' (' + i.notas.join('; ') + ')' : '') }]
+      })));
+    } else {
+      P.salvarERender();
+    }
     $('#dlg-importar').close();
-    P.toast(`${sel.length} diligência(s) importada(s).`);
+    P.toast(`${novos.length} novo(s) e ${atual.length} atualizado(s).`);
   }
 
   // =================================================================== PDF
@@ -272,7 +463,7 @@
       }
     }
     st.textContent = falhas.length ? 'Não foi possível ler: ' + falhas.join('; ') : '';
-    if (lista.length) mostrarPrevia(lista, arquivos.length + ' PDF(s)');
+    if (lista.length) mostrarPrevia(lista.map(normalizarGenerico), arquivos.length + ' PDF(s)');
   }
 
   // =================================================================== FAVORITO (bookmarklet)
@@ -364,5 +555,5 @@
   }
 
   // exposto para testes
-  P.importacao = { analisarLista, analisarDocumento, extrair, codigoFavorito };
+  P.importacao = { analisarLista, analisarExpedientes, analisarDocumento, extrair, codigoFavorito };
 })();

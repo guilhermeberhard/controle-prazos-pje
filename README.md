@@ -13,6 +13,20 @@ Funciona inteiramente no navegador: não precisa de servidor, banco de dados nem
 - **Respostas padrão**: 12 modelos iniciais (diligência cumprida, juntada de laudo, laudo pendente, intimação cumprida/frustrada, pedido de dilação – art. 10, §3º, CPP, relatório final etc.), totalmente editáveis, com **preenchimento automático** dos dados da diligência (`{{processo}}`, `{{inquerito}}`, `{{autoridade}}`, `{{data_extenso}}`...). Botão para copiar e colar no PJE.
 - Filtros e busca, exportação para planilha (CSV/Excel), impressão, backup e restauração (JSON).
 
+## Fases do PJE: "Tomar ciência" × "Responder"
+
+O sistema segue a mesma divisão da tela de Expedientes do PJE:
+
+| Fase | O que significa | Data que controla |
+|---|---|---|
+| **1. Responder** (prioridade) | Ciência já registrada; o prazo de manifestação está correndo | *Data limite prevista para manifestação* |
+| **2. Tomar ciência** | Expediente aguardando ciência; o prazo de resposta ainda não começou | *Data limite prevista para ciência* (expedição + 10 dias) |
+
+- O **Painel** mostra primeiro a faixa vermelha *Responder* (vencidos, vencem hoje, próximos dias, dilação, cumpridas a protocolar) e depois a faixa azul *Tomar ciência*, com a estimativa de quando a resposta venceria **se a ciência for dada hoje** e **se ocorrer a ciência tácita** – útil para planejar a logística da unidade.
+- Botão **Dei ciência hoje**: move o expediente para *Responder* e estima a data limite (marcada como "≈ estimado").
+- Passado o limite para ciência, o sistema registra automaticamente a **ciência tácita**.
+- As datas calculadas pelo sistema são **estimativas conservadoras**; a data oficial é a do PJE (que considera suspensões e feriados do TJES). Basta **reimportar** a tela de Expedientes: o sistema reconhece cada expediente pelo **ID** e atualiza a fase, a data da ciência e a data limite de manifestação, mantendo tipo, responsável, status e histórico já cadastrados.
+
 ## Importar do PJE (sem digitar)
 
 Botão **⇩ Importar do PJE** (no Painel e em Diligências). Três formas, todas processadas **apenas no seu navegador**:
@@ -21,7 +35,7 @@ Botão **⇩ Importar do PJE** (no Painel e em Diligências). Três formas, toda
 2. **PDF do expediente** – arraste os PDFs de despachos/ofícios baixados do PJE. Cada PDF vira uma diligência (somente PDFs com texto; escaneados não são lidos). O leitor de PDF (pdf.js) é baixado do cdnjs na primeira vez – exige internet.
 3. **Botão de favorito** – na aba "Botão no navegador", arraste o botão para a barra de favoritos. Com o PJE aberto, um clique envia o conteúdo da tela para o sistema (via `postMessage`, de janela para janela, sem servidor). O favorito é gerado com o endereço onde o sistema está publicado; se mudar o endereço, reinstale-o.
 
-O sistema reconhece automaticamente: nº CNJ do processo, nº do IP/TCO/APF, vara, datas de ciência/expedição, data limite ou prazo em dias/horas (calculado com as regras de contagem configuradas), tipo de diligência, se o requisitante é o MP e se há investigado preso. Tudo aparece numa **prévia editável** antes de gravar; processos já cadastrados com o mesmo prazo vêm desmarcados.
+Na tela **Expedientes** do PJE-TJES, o sistema lê de cada expediente: ato e ID (ex.: *Decisão (19987444)*), expedição eletrônica, prazo em dias (ou *sem prazo*), ciência registrada, data limite para ciência, data limite para manifestação, classe (IP, AuPrFl, PePrPr...), assunto, partes, comarca/vara e último movimento. Em outros layouts e PDFs, reconhece: nº CNJ do processo, nº do IP/TCO/APF, vara, datas de ciência/expedição, data limite ou prazo em dias/horas (calculado com as regras de contagem configuradas), tipo de diligência, se o requisitante é o MP e se há investigado preso. Tudo aparece numa **prévia editável** antes de gravar; processos já cadastrados com o mesmo prazo vêm desmarcados.
 
 A leitura é feita por regras de texto (`js/importar-pje.js`). Se o layout da tela do PJE/TJES for diferente do previsto, ajuste as expressões regulares nesse arquivo.
 
