@@ -50,15 +50,23 @@
     partes: 'Partes',
     data_ciencia: 'Data da ciência',
     prazo_dias: 'Prazo para resposta (dias)',
+    enderecamento: 'Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES',
+    unidade: 'Nome curto da unidade (DP ...)',
     data_hoje: 'Data de hoje (dd/mm/aaaa)',
     data_extenso: 'Data de hoje por extenso',
     ano: 'Ano atual',
     delegado: 'Nome da autoridade policial',
     cargo: 'Cargo',
-    delegacia: 'Unidade policial',
-    cidade: 'Cidade'
+    delegacia: 'Unidade policial (conforme a DP selecionada)',
+    cidade: 'Cidade (conforme a DP selecionada)'
   };
 
+  const UNIDADES_PADRAO = [
+    { id: 'afonso', nome: 'DP Afonso Cláudio', delegacia: 'Delegacia de Polícia de Afonso Cláudio', cidade: 'Afonso Cláudio', cor: '#1f5fbf' },
+    { id: 'laranja', nome: 'DP Laranja da Terra', delegacia: 'Delegacia de Polícia de Laranja da Terra', cidade: 'Laranja da Terra', cor: '#2e7d32' }
+  ];
+  const ENDERECAMENTO = 'Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES';
+  const ENDERECAMENTO_ANTIGO = /^Excelentíssimo\(a\) Senhor\(a\) \{\{autoridade\}\}\n\{\{orgao\}\}/;
   const CONFIG_PADRAO = {
     delegado: '',
     cargo: 'Delegado(a) de Polícia',
@@ -80,12 +88,38 @@
   function carregar() {
     let s = null;
     try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { s = null; }
+    return normalizar(s);
+  }
+  /**
+   * Garante a estrutura atual dos dados e migra versões anteriores sem perder nada:
+   * - cria as unidades (DP Afonso Cláudio e DP Laranja da Terra);
+   * - diligências antigas, sem unidade, passam a pertencer à DP Afonso Cláudio;
+   * - o endereçamento dos modelos padrão antigos é trocado pelo endereçamento fixo.
+   */
+  function normalizar(s) {
     if (!s || typeof s !== 'object') s = {};
     s.diligencias = Array.isArray(s.diligencias) ? s.diligencias : [];
     s.config = Object.assign({}, CONFIG_PADRAO, s.config || {});
     if (!Array.isArray(s.modelos)) s.modelos = modelosPadrao();
+    if (!Array.isArray(s.unidades) || !s.unidades.length) {
+      s.unidades = UNIDADES_PADRAO.map(u => Object.assign({}, u));
+      // dados de versões anteriores pertencem à DP Afonso Cláudio
+      if (s.config.delegacia) s.unidades[0].delegacia = s.config.delegacia;
+      if (s.config.cidade) s.unidades[0].cidade = s.config.cidade;
+    }
+    s.diligencias.forEach(d => { if (!d.unidade) d.unidade = s.unidades[0].id; });
+    if (!s.unidades.some(u => u.id === s.unidadeAtual)) s.unidadeAtual = s.unidades[0].id;
+    if (!s.config.migEnderecamento) {
+      s.modelos.forEach(m => { m.texto = m.texto.replace(ENDERECAMENTO_ANTIGO, ENDERECAMENTO); });
+      s.config.migEnderecamento = true;
+    }
     return s;
   }
+  // ----- Unidades
+  const unidade = (id) => state.unidades.find(u => u.id === (id || state.unidadeAtual)) || state.unidades[0];
+  const daUnidade = d => (d.unidade || state.unidades[0].id) === state.unidadeAtual;
+  /** Diligências da unidade selecionada. */
+  const dils = () => state.diligencias.filter(daUnidade);
   function salvar() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -321,8 +355,23 @@
     const fb = $('#logo-fallback');
     const src = state.config.logo || 'assets/logo-pces.png';
     if (img.getAttribute('src') !== src) { img.style.display = ''; fb.style.display = 'none'; img.src = src; }
-    const c = state.config;
-    $('#brand-unidade').textContent = c.delegacia ? c.delegacia + ' – Controle de Prazos PJE' : 'Controle de Prazos e Diligências – PJE';
+    const u = unidade();
+    $('#brand-unidade').textContent = u.delegacia + ' – Controle de Prazos PJE';
+    document.documentElement.style.setProperty('--unidade', u.cor || '#1f5fbf');
+    $('#seletor-unidade').innerHTML = state.unidades.map(x => {
+      const n = state.diligencias.filter(d => (d.unidade || state.unidades[0].id) === x.id && ativa(d) && fase(d) === 'responder' &&
+        d.status !== 'cumprida' && d.prazoPje && diasAte(d.prazoPje) <= Number(state.config.margem || 5)).length;
+      return `<button data-action="trocar-unidade" data-un="${esc(x.id)}" class="${x.id === u.id ? 'active' : ''}" style="--c:${esc(x.cor || '#1f5fbf')}">
+        ${esc(x.nome)}${n ? `<span class="cont" title="Prazos de resposta vencidos ou próximos">${n}</span>` : ''}</button>`;
+    }).join('');
+    $('#faixa-unidade').innerHTML = `Unidade selecionada: <b>${esc(u.nome)}</b> – tudo o que for cadastrado ou importado agora vai para esta unidade.`;
+  }
+  function trocarUnidade(id) {
+    if (!state.unidades.some(u => u.id === id) || id === state.unidadeAtual) return;
+    state.unidadeAtual = id;
+    salvar();
+    render();
+    toast('Unidade: ' + unidade().nome);
   }
 
   function renderAvisoBackup() {
@@ -352,7 +401,7 @@
   }
 
   function renderPainel() {
-    const at = state.diligencias.filter(ativa);
+    const at = dils().filter(ativa);
     const margem = Number(state.config.margem || 5);
     const resp = at.filter(d => fase(d) === 'responder');
     const cien = at.filter(d => fase(d) === 'ciencia');
@@ -362,7 +411,7 @@
     const proximas = correndo.filter(d => { const x = diasAte(d.prazoPje); return x > 0 && x <= margem; });
     const cumpridas = resp.filter(d => d.status === 'cumprida');
     const mesAtual = toISO(hoje()).slice(0, 7);
-    const finalMes = state.diligencias.filter(d => d.status === 'respondida' && (d.concluidoEm || '').slice(0, 7) === mesAtual);
+    const finalMes = dils().filter(d => d.status === 'respondida' && (d.concluidoEm || '').slice(0, 7) === mesAtual);
     const card = ([cor, n, l, f]) => `<div class="stat ${cor}" data-action="filtrar" data-filtro="${f}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
 
     $('#stats-responder').innerHTML = [
@@ -440,7 +489,7 @@
     const tipo = $('#flt-tipo').value;
     const urg = $('#flt-urgencia').value;
     const fs = $('#flt-fase').value;
-    return state.diligencias.filter(d => {
+    return dils().filter(d => {
       if (fs && fase(d) !== fs) return false;
       if (st === 'ativas' && !ativa(d)) return false;
       if (st !== 'ativas' && st !== 'todas' && d.status !== st) return false;
@@ -495,7 +544,7 @@
     const hojeISO = toISO(hoje());
     const porDia = {};
     const add = (iso, tipo, d) => { if (iso) (porDia[iso] = porDia[iso] || []).push([tipo, d]); };
-    state.diligencias.forEach(d => {
+    dils().forEach(d => {
       if (fase(d) === 'ciencia') add(d.limiteCiencia, 'cie', d);
       else add(d.prazoPje, d.prazoEstimado ? 'est' : 'pje', d);
       add(d.prazoInterno, 'interno', d);
@@ -571,7 +620,7 @@
       Object.assign(d, dados, { atualizadoEm: agora });
       aplicarMudancaStatus(d, statusAnterior);
     } else {
-      const d = Object.assign({ id: uid(), criadoEm: agora, atualizadoEm: agora }, dados);
+      const d = Object.assign({ id: uid(), criadoEm: agora, atualizadoEm: agora, unidade: state.unidadeAtual }, dados);
       aplicarMudancaStatus(d, null);
       state.diligencias.push(d);
     }
@@ -654,6 +703,7 @@
 
   function valoresPara(d) {
     const c = state.config;
+    const u = unidade(d && d.unidade);
     const h = hoje();
     const autoridade = !d ? '' : d.requisitante === 'Juiz(a)' ? 'Juiz(a) de Direito'
       : d.requisitante === 'Ministério Público' ? 'Promotor(a) de Justiça' : '';
@@ -665,7 +715,7 @@
       ato: d && d.ato, classe: d && d.classe, partes: d && d.partes, data_ciencia: d && fmt(d.dataCiencia),
       prazo_dias: d && d.prazoDias ? String(d.prazoDias) : '',
       data_hoje: fmt(h), data_extenso: extenso(h), ano: String(h.getFullYear()),
-      delegado: c.delegado, cargo: c.cargo, delegacia: c.delegacia, cidade: c.cidade
+      delegado: c.delegado, cargo: c.cargo, delegacia: u.delegacia, cidade: u.cidade, unidade: u.nome, enderecamento: ENDERECAMENTO
     };
   }
   function preencher(texto, d) {
@@ -678,7 +728,7 @@
   }
 
   function abrirResposta(dilId, modId) {
-    const ativas = state.diligencias.filter(ativa).sort(ordenarPorPrazo);
+    const ativas = dils().filter(ativa).sort(ordenarPorPrazo);
     const dSel = dilId ? state.diligencias.find(x => x.id === dilId) : null;
     const listaD = dSel && !ativa(dSel) ? [dSel].concat(ativas) : ativas;
     opcoes('#r-diligencia', listaD.map(d => [d.id, `${FASES[fase(d)]}${dataRef(d) ? ' até ' + fmt(dataRef(d)) : ''} – ${tituloDil(d)} – ${d.ato || d.tipo}`]), '(sem diligência – preencher manualmente)');
@@ -726,8 +776,7 @@
     const c = state.config;
     $('#cfg-delegado').value = c.delegado;
     $('#cfg-cargo').value = c.cargo;
-    $('#cfg-delegacia').value = c.delegacia;
-    $('#cfg-cidade').value = c.cidade;
+    renderUnidadesConfig();
     $('#cfg-margem').value = c.margem;
     $('#cfg-contagem').value = c.contagem;
     $('#cfg-prorrogar').checked = !!c.prorrogar;
@@ -743,16 +792,54 @@
     Object.assign(state.config, {
       delegado: $('#cfg-delegado').value.trim(),
       cargo: $('#cfg-cargo').value.trim(),
-      delegacia: $('#cfg-delegacia').value.trim(),
-      cidade: $('#cfg-cidade').value.trim(),
+
       margem: Math.max(0, Number($('#cfg-margem').value) || 0),
       contagem: $('#cfg-contagem').value,
       prorrogar: $('#cfg-prorrogar').checked,
       feriados: $('#cfg-feriados').value
     });
+    document.querySelectorAll('#cfg-unidades [data-un]').forEach(row => {
+      const u = state.unidades.find(x => x.id === row.dataset.un);
+      if (!u) return;
+      row.querySelectorAll('[data-k]').forEach(el => { u[el.dataset.k] = el.value.trim() || u[el.dataset.k]; });
+    });
     salvar();
     render();
     toast('Configurações salvas.');
+  }
+
+  function renderUnidadesConfig() {
+    $('#cfg-unidades').innerHTML = state.unidades.map(u => {
+      const n = state.diligencias.filter(d => d.unidade === u.id).length;
+      return `<div class="un-cfg" data-un="${esc(u.id)}" style="--c:${esc(u.cor || '#1f5fbf')}">
+        <div class="row2">
+          <label>Nome curto (botão)<input data-k="nome" value="${esc(u.nome)}"></label>
+          <label>Cor<input type="color" data-k="cor" value="${esc(u.cor || '#1f5fbf')}"></label>
+        </div>
+        <div class="row2">
+          <label>Nome completo (usado nas respostas)<input data-k="delegacia" value="${esc(u.delegacia)}"></label>
+          <label>Cidade (local e data)<input data-k="cidade" value="${esc(u.cidade)}"></label>
+        </div>
+        <div class="small muted">${n} registro(s) ${state.unidades.length > 1 ? `· <button type="button" class="icon-btn" data-action="del-unidade" data-un="${esc(u.id)}">remover unidade</button>` : ''}</div>
+      </div>`;
+    }).join('');
+  }
+  function adicionarUnidade() {
+    const nome = prompt('Nome curto da nova unidade (ex.: DP Itarana):');
+    if (!nome || !nome.trim()) return;
+    const cidade = nome.replace(/^\s*(DP|DEPOL|Delegacia( de Polícia)?( de)?)\s*/i, '').trim();
+    state.unidades.push({ id: uid(), nome: nome.trim(), delegacia: 'Delegacia de Polícia de ' + cidade, cidade, cor: '#8a5a00' });
+    salvar(); renderUnidadesConfig(); render(); toast('Unidade adicionada. Ajuste os dados e salve.');
+  }
+  function removerUnidade(id) {
+    const u = state.unidades.find(x => x.id === id);
+    if (!u) return;
+    const n = state.diligencias.filter(d => d.unidade === id).length;
+    if (n) { alert(`A unidade ${u.nome} tem ${n} registro(s). Exclua ou finalize-os antes de remover a unidade.`); return; }
+    if (!confirm(`Remover a unidade ${u.nome}?`)) return;
+    state.unidades = state.unidades.filter(x => x.id !== id);
+    if (state.unidadeAtual === id) state.unidadeAtual = state.unidades[0].id;
+    salvar(); render();
   }
 
   // ------------------------------------------------------------------ Backup / exportação
@@ -770,12 +857,9 @@
       try {
         const dados = JSON.parse(leitor.result);
         if (!dados || !Array.isArray(dados.diligencias)) throw new Error('formato');
-        if (!confirm(`O backup contém ${dados.diligencias.length} diligência(s) e ${(dados.modelos || []).length} modelo(s). Os dados atuais serão SUBSTITUÍDOS. Continuar?`)) return;
-        state = {
-          diligencias: dados.diligencias,
-          modelos: Array.isArray(dados.modelos) ? dados.modelos : modelosPadrao(),
-          config: Object.assign({}, CONFIG_PADRAO, dados.config || {})
-        };
+        if (!confirm(`O backup contém ${dados.diligencias.length} diligência(s) (todas as unidades) e ${(dados.modelos || []).length} modelo(s). Os dados atuais serão SUBSTITUÍDOS. Continuar?`)) return;
+        state = normalizar(dados);
+        delete state.exportadoEm; delete state.versao;
         salvar();
         render();
         toast('Backup restaurado.');
@@ -793,7 +877,7 @@
       fmt(d.recebimento), fmt(d.limiteCiencia), fmt(d.dataCiencia), d.prazoDias, fmt(d.prazoPje), d.prazoEstimado ? 'Sim' : '',
       fmt(d.prazoInterno), dataRef(d) ? diasAte(dataRef(d)) : '', d.responsavel, STATUS[d.status], d.reuPreso ? 'Sim' : 'Não', d.obs
     ].map(q).join(';'));
-    baixar(`diligencias-${toISO(hoje())}.csv`, '﻿' + [cab.map(q).join(';')].concat(linhas).join('\r\n'), 'text/csv;charset=utf-8');
+    baixar(`diligencias-${unidade().nome.replace(/[^\wÀ-ÿ]+/g, '-')}-${toISO(hoje())}.csv`, '﻿' + [cab.map(q).join(';')].concat(linhas).join('\r\n'), 'text/csv;charset=utf-8');
   }
 
   // ------------------------------------------------------------------ Eventos
@@ -824,6 +908,9 @@
       case 'editar': abrirDiligencia(id); break;
       case 'resposta': e.stopPropagation(); abrirResposta(id); break;
       case 'marcar': marcarStatus(id, el.dataset.status); break;
+      case 'trocar-unidade': trocarUnidade(el.dataset.un); break;
+      case 'add-unidade': adicionarUnidade(); break;
+      case 'del-unidade': removerUnidade(el.dataset.un); break;
       case 'ciencia': e.stopPropagation(); registrarCiencia(id); break;
       case 'filtrar': filtrarPeloPainel(el.dataset.filtro); break;
       case 'excluir-diligencia': {
@@ -963,12 +1050,15 @@
     calcularPrazo, feriadosDoAno, preencher, fmt, toISO, parseISO, hoje, esc, toast, opcoes,
     TIPOS, REQUISITANTES, STATUS, FASES, DIAS_CIENCIA, addDias, respostaEstimada,
     config: () => state.config,
-    diligencias: () => state.diligencias,
+    diligencias: () => dils(),
+    unidades: () => state.unidades,
+    unidadeAtual: () => state.unidadeAtual,
+    trocarUnidade,
     /** Recebe uma lista de diligências já normalizadas e grava. */
     adicionar(lista) {
       const agora = new Date().toISOString();
       lista.forEach(d => state.diligencias.push(Object.assign({
-        id: uid(), criadoEm: agora, atualizadoEm: agora, status: 'pendente', andamentos: []
+        id: uid(), criadoEm: agora, atualizadoEm: agora, status: 'pendente', andamentos: [], unidade: state.unidadeAtual
       }, d)));
       salvar();
       render();

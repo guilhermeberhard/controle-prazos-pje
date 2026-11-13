@@ -13,6 +13,19 @@ Funciona inteiramente no navegador: não precisa de servidor, banco de dados nem
 - **Respostas padrão**: 12 modelos iniciais (diligência cumprida, juntada de laudo, laudo pendente, intimação cumprida/frustrada, pedido de dilação – art. 10, §3º, CPP, relatório final etc.), totalmente editáveis, com **preenchimento automático** dos dados da diligência (`{{processo}}`, `{{inquerito}}`, `{{autoridade}}`, `{{data_extenso}}`...). Botão para copiar e colar no PJE.
 - Filtros e busca, exportação para planilha (CSV/Excel), impressão, backup e restauração (JSON).
 
+## Unidades: DP Afonso Cláudio e DP Laranja da Terra
+
+Cada unidade tem o **seu próprio controle de prazos**. Use os botões de unidade, logo abaixo do cabeçalho, para escolher a delegacia. Painel, diligências, calendário, exportação em CSV e importação do PJE mostram **apenas a unidade selecionada**, e o que for cadastrado ou importado vai para ela. O número em vermelho em cada botão mostra os prazos de resposta vencidos ou próximos daquela unidade.
+
+- O **nome completo** e a **cidade** de cada unidade (em *Configurações › Unidades*) entram automaticamente nas respostas (`{{delegacia}}`, `{{cidade}}`). Outras unidades podem ser acrescentadas ali.
+- Na tela de importação, o campo **"Importar para"** permite confirmar ou trocar a unidade de destino.
+- O backup reúne **todas** as unidades num único arquivo.
+- Ao atualizar de uma versão anterior, os registros já existentes passam automaticamente para a **DP Afonso Cláudio**.
+
+## Endereçamento das respostas
+
+Todos os modelos usam o endereçamento fixo **"Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES"** (também disponível pelo campo `{{enderecamento}}`). Os modelos padrão que já estavam salvos no navegador são corrigidos automaticamente na primeira abertura; modelos criados por você não são alterados.
+
 ## Fases do PJE: "Tomar ciência" × "Responder"
 
 O sistema segue a mesma divisão da tela de Expedientes do PJE:

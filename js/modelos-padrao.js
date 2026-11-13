@@ -8,8 +8,7 @@ window.MODELOS_PADRAO = [
     titulo: 'Diligência cumprida (genérica)',
     categoria: 'Cumprimento',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -27,8 +26,7 @@ Permaneço à disposição para quaisquer esclarecimentos adicionais.
     titulo: 'Juntada de laudo pericial',
     categoria: 'Laudos e perícias',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -48,8 +46,7 @@ Informo, ainda, que não há outras perícias pendentes relacionadas a este proc
     titulo: 'Laudo pendente – aguardando órgão pericial',
     categoria: 'Laudos e perícias',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -67,8 +64,7 @@ Esta Unidade Policial reiterou a solicitação e procederá à juntada tão logo
     titulo: 'Intimação cumprida',
     categoria: 'Intimações',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -84,8 +80,7 @@ Procedimento policial: {{inquerito}}
     titulo: 'Intimação frustrada – pessoa não localizada',
     categoria: 'Intimações',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -107,8 +102,7 @@ Segue em anexo a certidão da equipe responsável. Coloco-me à disposição par
     titulo: 'Pedido de dilação de prazo (inquérito)',
     categoria: 'Prazos',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -131,8 +125,7 @@ Ressalto que as diligências já realizadas constam dos autos e que as pendentes
     titulo: 'Pedido de prazo suplementar para diligência específica',
     categoria: 'Prazos',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -150,8 +143,7 @@ Justificativa: ________________________________________________ (ex.: necessidad
     titulo: 'Informação de diligências em andamento',
     categoria: 'Informações',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -176,8 +168,7 @@ Tão logo concluídas, os autos serão remetidos com o respectivo relatório.
     titulo: 'Oitiva realizada – juntada de termo',
     categoria: 'Cumprimento',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -193,8 +184,7 @@ Procedimento policial: {{inquerito}}
     titulo: 'Diligência já cumprida anteriormente',
     categoria: 'Informações',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -210,8 +200,7 @@ Procedimento policial: {{inquerito}}
     titulo: 'Remessa de relatório final',
     categoria: 'Conclusão',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}
@@ -227,8 +216,7 @@ Procedimento policial: {{inquerito}}
     titulo: 'Ciência de decisão / despacho',
     categoria: 'Informações',
     texto:
-`Excelentíssimo(a) Senhor(a) {{autoridade}}
-{{orgao}}
+`Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES
 
 Processo nº {{processo}}
 Procedimento policial: {{inquerito}}

@@ -328,7 +328,11 @@
     return lista;
   }
 
+  let ultimaLista = null, ultimaOrigem = '';
   function mostrarPrevia(lista, origem) {
+    ultimaLista = lista; ultimaOrigem = origem;
+    const sel = $('#imp-unidade');
+    sel.innerHTML = P.unidades().map(u => `<option value="${esc(u.id)}"${u.id === P.unidadeAtual() ? ' selected' : ''}>${esc(u.nome)}</option>`).join('');
     itens = classificar(lista);
     if (!itens.length) {
       alert('Não foi encontrado nenhum expediente/número de processo no conteúdo. Verifique se copiou a tela de Expedientes do PJE.');
@@ -417,7 +421,7 @@
       P.salvarERender();
     }
     $('#dlg-importar').close();
-    P.toast(`${novos.length} novo(s) e ${atual.length} atualizado(s).`);
+    P.toast(`${P.unidades().find(u => u.id === P.unidadeAtual()).nome}: ${novos.length} novo(s) e ${atual.length} atualizado(s).`);
   }
 
   // =================================================================== PDF
@@ -535,6 +539,11 @@
       case 'imp-voltar': etapa(1); break;
       case 'imp-confirmar': confirmar(); break;
     }
+  });
+  // trocar a unidade de destino reclassifica (novo/atualizar) comparando com a outra unidade
+  $('#imp-unidade').addEventListener('change', e => {
+    P.trocarUnidade(e.target.value);
+    if (ultimaLista) mostrarPrevia(ultimaLista.map(i => Object.assign({}, i, { existente: null, mudancas: null, textoMudancas: '' })), ultimaOrigem);
   });
   $('#imp-marcar-todos').addEventListener('change', e => {
     document.querySelectorAll('#imp-tbody .imp-sel').forEach(c => { c.checked = e.target.checked; });

@@ -26,6 +26,12 @@
     </nav>
   </header>
 
+  <div class="barra-unidade">
+    <span class="rotulo">Unidade:</span>
+    <div id="seletor-unidade" class="seletor-unidade"></div>
+    <span id="faixa-unidade" class="faixa-unidade"></span>
+  </div>
+
   <div id="aviso-backup" class="aviso hidden"></div>
 
   <main>
@@ -169,11 +175,12 @@
       <div class="section-head"><h1>Configurações</h1></div>
       <div class="grid2">
         <form class="card" id="form-config">
-          <h2>Dados da unidade (usados nas respostas)</h2>
+          <h2>Autoridade policial (usada nas respostas)</h2>
           <label>Nome da autoridade policial<input id="cfg-delegado" placeholder="Ex.: Fulano de Tal"></label>
           <label>Cargo<input id="cfg-cargo"></label>
-          <label>Unidade policial<input id="cfg-delegacia" placeholder="Ex.: Delegacia de Polícia de ..."></label>
-          <label>Cidade<input id="cfg-cidade" placeholder="Ex.: Vitória"></label>
+          <h2>Unidades (cada uma com controle de prazos separado)</h2>
+          <div id="cfg-unidades"></div>
+          <p><button type="button" class="btn sm" data-action="add-unidade">+ Adicionar unidade</button></p>
           <h2>Prazos</h2>
           <div class="row2">
             <label>Margem de alerta (dias)<input type="number" min="0" max="60" id="cfg-margem"></label>
@@ -395,6 +402,9 @@
 
       <div id="imp-etapa2" class="hidden">
         <div class="imp-resumo">
+          <label class="imp-un">Importar para
+            <select id="imp-unidade"></select>
+          </label>
           <span id="imp-resumo-texto"></span>
           <span class="spacer"></span>
           <label class="check"><input type="checkbox" id="imp-marcar-todos" checked> Marcar todas</label>
