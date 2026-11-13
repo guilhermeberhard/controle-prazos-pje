@@ -32,6 +32,7 @@
     <span id="faixa-unidade" class="faixa-unidade"></span>
   </div>
 
+  <div id="aviso-importacao" class="aviso aviso-imp hidden"></div>
   <div id="aviso-backup" class="aviso hidden"></div>
 
   <main>
@@ -41,6 +42,7 @@
         <h1>Painel de prazos</h1>
         <div class="btn-row">
           <button class="btn" data-action="importar-pje">⇩ Importar do PJE</button>
+          <button class="btn" data-action="historico-importacoes" title="Desfazer ou mover importações">↶ Desfazer importação</button>
           <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
         </div>
       </div>
@@ -86,6 +88,7 @@
           <button class="btn" data-action="exportar-csv">Exportar planilha (CSV)</button>
           <button class="btn" data-action="imprimir">Imprimir</button>
           <button class="btn" data-action="importar-pje">⇩ Importar do PJE</button>
+          <button class="btn" data-action="historico-importacoes" title="Desfazer ou mover importações">↶ Desfazer importação</button>
           <button class="btn primary" data-action="nova-diligencia">+ Nova diligência</button>
         </div>
       </div>
@@ -291,6 +294,10 @@
           <label>Responsável (escrivão/agente)<input id="f-responsavel"></label>
           <label>Status<select id="f-status"></select></label>
         </div>
+        <div class="row2">
+          <label>Unidade (DP)<select id="f-unidade"></select></label>
+          <span></span>
+        </div>
         <label class="check"><input type="checkbox" id="f-reuPreso"> Investigado/réu preso (prioridade)</label>
         <label>Observações<textarea id="f-obs" rows="2"></textarea></label>
         <div class="andamentos">
@@ -426,6 +433,19 @@
       <button type="button" class="btn" data-close>Cancelar</button>
       <button type="button" class="btn primary hidden" id="imp-confirmar" data-action="imp-confirmar">Importar selecionadas</button>
     </div>
+  </dialog>
+
+  <!-- MODAL HISTÓRICO DE IMPORTAÇÕES -->
+  <dialog id="dlg-historico" class="dlg wide">
+    <div class="dlg-head">
+      <h2>Importações do PJE – desfazer ou mover</h2>
+      <button type="button" class="x" data-close>×</button>
+    </div>
+    <div class="dlg-body">
+      <p class="small"><b>Desfazer</b> exclui os registros criados pela importação (e devolve ao estado anterior os que ela atualizou). <b>Mover para a unidade</b> transfere os registros criados para a DP correta, mantendo tudo o que já foi preenchido. As importações aparecem em todas as unidades.</p>
+      <div id="lista-historico"></div>
+    </div>
+    <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn" data-close>Fechar</button></div>
   </dialog>
 
   <div id="toast" class="toast"></div>

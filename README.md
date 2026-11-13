@@ -22,6 +22,15 @@ Cada unidade tem o **seu próprio controle de prazos**. Use os botões de unidad
 - O backup reúne **todas** as unidades num único arquivo.
 - Ao atualizar de uma versão anterior, os registros já existentes passam automaticamente para a **DP Afonso Cláudio**.
 
+## Desfazer ou mover uma importação
+
+- Logo após cada importação aparece uma barra laranja com **↶ Desfazer importação** e **Mover para [outra DP]**.
+- O botão **↶ Desfazer importação** (Painel e Diligências) abre o histórico das últimas importações, com as mesmas opções:
+  - **Desfazer**: exclui os registros criados pela importação e devolve ao estado anterior os registros que ela atualizou.
+  - **Mover para a unidade**: transfere os registros criados para a DP correta, mantendo tudo o que já foi preenchido.
+- Importações feitas antes deste recurso também aparecem no histórico, como *reconstruídas*. O sistema as identifica pelos registros criados juntos com o andamento "Importado do PJE". Nelas é possível mover ou excluir os registros criados, mas não restaurar atualizações.
+- Um registro avulso pode ser trocado de unidade pelo campo **Unidade (DP)** no formulário de edição.
+
 ## Endereçamento das respostas
 
 Todos os modelos usam o endereçamento fixo **"Excelentíssimo Senhor Doutor Juiz de Direito da 2ª Vara de Afonso Cláudio/ES"** (também disponível pelo campo `{{enderecamento}}`). Os modelos padrão que já estavam salvos no navegador são corrigidos automaticamente na primeira abertura; modelos criados por você não são alterados.

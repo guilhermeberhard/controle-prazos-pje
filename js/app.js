@@ -28,7 +28,7 @@
     cumprida: 'Cumprida – responder no PJE',
     respondida: 'Finalizada no PJE (respondida/ciente)'
   };
-  const CAMPOS_FORM = ['processo', 'inquerito', 'tipo', 'requisitante', 'orgao', 'descricao', 'recebimento', 'prazoPje', 'prazoInterno', 'responsavel', 'status', 'idPje', 'obs', 'fase', 'ato', 'limiteCiencia', 'dataCiencia', 'prazoDias', 'classe', 'partes'];
+  const CAMPOS_FORM = ['unidade', 'processo', 'inquerito', 'tipo', 'requisitante', 'orgao', 'descricao', 'recebimento', 'prazoPje', 'prazoInterno', 'responsavel', 'status', 'idPje', 'obs', 'fase', 'ato', 'limiteCiencia', 'dataCiencia', 'prazoDias', 'classe', 'partes'];
   const FASES = { ciencia: 'Tomar ciência', responder: 'Responder' };
   /** Prazo legal para a ciência da intimação eletrônica (Lei 11.419/2006, art. 5º, § 3º). */
   const DIAS_CIENCIA = 10;
@@ -108,6 +108,7 @@
       if (s.config.cidade) s.unidades[0].cidade = s.config.cidade;
     }
     s.diligencias.forEach(d => { if (!d.unidade) d.unidade = s.unidades[0].id; });
+    if (!Array.isArray(s.importacoes)) s.importacoes = [];
     if (!s.unidades.some(u => u.id === s.unidadeAtual)) s.unidadeAtual = s.unidades[0].id;
     if (!s.config.migEnderecamento) {
       s.modelos.forEach(m => { m.texto = m.texto.replace(ENDERECAMENTO_ANTIGO, ENDERECAMENTO); });
@@ -342,6 +343,7 @@
     aplicarCienciaTacita();
     renderMarca();
     renderAvisoBackup();
+    renderAvisoImportacao();
     const v = viewAtual();
     if (v === 'painel') renderPainel();
     else if (v === 'diligencias') renderLista();
@@ -578,6 +580,8 @@
     $('#f-id').value = d ? d.id : '';
     CAMPOS_FORM
       .forEach(k => { $('#f-' + k).value = f[k] == null ? '' : f[k]; });
+    opcoes('#f-unidade', state.unidades.map(u => [u.id, u.nome]));
+    $('#f-unidade').value = f.unidade || state.unidadeAtual;
     $('#f-fase').value = fase(f);
     $('#f-reuPreso').checked = !!f.reuPreso;
     $('#f-prazoEstimado').checked = !!f.prazoEstimado;
@@ -842,6 +846,142 @@
     salvar(); render();
   }
 
+  // ------------------------------------------------------------------ Histórico de importações (desfazer)
+  const MAX_IMPORTACOES = 15;
+  function registrarImportacao(lote) {
+    state.importacoes.unshift(Object.assign({ id: uid(), em: new Date().toISOString(), unidade: state.unidadeAtual, desfeita: false, oculta: false }, lote));
+    state.importacoes = state.importacoes.slice(0, MAX_IMPORTACOES);
+    salvar();
+    render();
+  }
+  const nomeUn = id => (state.unidades.find(u => u.id === id) || { nome: '(unidade removida)' }).nome;
+  const quando = iso => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  /**
+   * Importações feitas antes deste recurso existir não têm registro de lote.
+   * Elas são reconstruídas pelos registros criados juntos (mesmo horário de criação)
+   * cujo primeiro andamento é "Importado do PJE".
+   */
+  function lotesReconstruidos() {
+    const registrados = new Set();
+    state.importacoes.forEach(l => (l.novos || []).forEach(id => registrados.add(id)));
+    const grupos = {};
+    state.diligencias.forEach(d => {
+      if (registrados.has(d.id) || !d.criadoEm) return;
+      const a0 = (d.andamentos || [])[0];
+      if (!a0 || !/^Importad[oa] do PJE/.test(a0.texto)) return;
+      const k = d.criadoEm + '|' + d.unidade;
+      (grupos[k] = grupos[k] || { id: 'rec-' + k, em: d.criadoEm, unidade: d.unidade, origem: 'importação anterior (reconstruída)', novos: [], atualizados: [], reconstruido: true }).novos.push(d.id);
+    });
+    return Object.values(grupos);
+  }
+  function todosLotes() {
+    return state.importacoes.filter(l => !l.desfeita).concat(lotesReconstruidos())
+      .map(l => Object.assign({}, l, { novos: (l.novos || []).filter(id => state.diligencias.some(d => d.id === id)) }))
+      .filter(l => l.novos.length || (l.atualizados || []).length)
+      .sort((a, b) => b.em.localeCompare(a.em));
+  }
+  function acharLote(id) { return todosLotes().find(l => l.id === id); }
+  /** Registros alterados à mão depois da importação (para avisar antes de desfazer). */
+  function editadosDepois(l) {
+    const lim = new Date(new Date(l.em).getTime() + 5000).toISOString();
+    return l.novos.filter(id => { const d = state.diligencias.find(x => x.id === id); return d && d.atualizadoEm && d.atualizadoEm > lim; }).length;
+  }
+  function marcarDesfeita(l) {
+    const reg = state.importacoes.find(x => x.id === l.id);
+    if (reg) reg.desfeita = true;
+  }
+
+  function desfazerImportacao(loteId) {
+    const l = acharLote(loteId);
+    if (!l) return;
+    const ed = editadosDepois(l);
+    const nAt = (l.atualizados || []).length;
+    let msg = `Desfazer a importação de ${quando(l.em)} em ${nomeUn(l.unidade)}?\n\n` +
+      `• ${l.novos.length} registro(s) criado(s) por ela serão EXCLUÍDOS` +
+      (nAt ? `\n• ${nAt} registro(s) atualizado(s) por ela voltarão ao estado anterior` : '');
+    if (ed) msg += `\n\nATENÇÃO: ${ed} desses registros foram alterados depois da importação; essas alterações também serão perdidas.`;
+    if (!confirm(msg)) return;
+    const excluir = new Set(l.novos);
+    state.diligencias = state.diligencias.filter(d => !excluir.has(d.id));
+    (l.atualizados || []).forEach(a => {
+      const i = state.diligencias.findIndex(d => d.id === a.id);
+      if (i >= 0 && a.antes) state.diligencias[i] = a.antes;
+    });
+    marcarDesfeita(l);
+    salvar(); render(); renderHistorico();
+    toast(`Importação desfeita: ${l.novos.length} excluído(s)${nAt ? `, ${nAt} restaurado(s)` : ''}.`);
+  }
+
+  function moverImportacao(loteId, destino) {
+    const l = acharLote(loteId);
+    if (!l || !destino || destino === l.unidade) return;
+    const nAt = (l.atualizados || []).length;
+    if (!confirm(`Mover ${l.novos.length} registro(s) da importação de ${quando(l.em)} de ${nomeUn(l.unidade)} para ${nomeUn(destino)}?` +
+      (nAt ? `\n\nOs ${nAt} registro(s) que a importação apenas ATUALIZOU continuam em ${nomeUn(l.unidade)} e voltam ao estado anterior (eram de lá).` : ''))) return;
+    const hojeISO = toISO(hoje());
+    let duplicados = 0;
+    const excluir = new Set();
+    l.novos.forEach(id => {
+      const d = state.diligencias.find(x => x.id === id);
+      if (!d) return;
+      const jaExiste = d.idPje && state.diligencias.some(x => x.id !== d.id && x.unidade === destino && String(x.idPje) === String(d.idPje));
+      if (jaExiste) { excluir.add(d.id); duplicados++; return; }
+      d.unidade = destino;
+      d.andamentos = d.andamentos || [];
+      d.andamentos.push({ data: hojeISO, texto: `Movido de ${nomeUn(l.unidade)} para ${nomeUn(destino)} (importação feita na unidade errada).` });
+    });
+    state.diligencias = state.diligencias.filter(d => !excluir.has(d.id));
+    (l.atualizados || []).forEach(a => {
+      const i = state.diligencias.findIndex(d => d.id === a.id);
+      if (i >= 0 && a.antes) state.diligencias[i] = a.antes;
+    });
+    marcarDesfeita(l);
+    salvar(); render(); renderHistorico();
+    toast(`${l.novos.length - duplicados} registro(s) movido(s) para ${nomeUn(destino)}` + (duplicados ? ` (${duplicados} já existiam lá e foram descartados)` : '') + '.');
+  }
+
+  function renderHistorico() {
+    const el = $('#lista-historico');
+    if (!el) return;
+    const lotes = todosLotes();
+    el.innerHTML = lotes.length ? lotes.map((l, i) => {
+      const procs = l.novos.map(id => state.diligencias.find(d => d.id === id)).filter(Boolean);
+      const outras = state.unidades.filter(u => u.id !== l.unidade);
+      return `<div class="lote ${i === 0 ? 'ultimo' : ''}">
+        <div class="lote-cab">
+          <div><b>${quando(l.em)}</b> ${i === 0 ? '<span class="badge critico">mais recente</span>' : ''}<br>
+            <span class="small">Importado em <b>${esc(nomeUn(l.unidade))}</b> · ${procs.length} novo(s)${(l.atualizados || []).length ? ` · ${(l.atualizados || []).length} atualizado(s)` : ''} · <span class="muted">${esc(l.origem || '')}</span></span></div>
+          <div class="btn-row">
+            ${outras.length ? `<select class="lote-destino" data-lote="${esc(l.id)}">${outras.map(u => `<option value="${esc(u.id)}">${esc(u.nome)}</option>`).join('')}</select>
+            <button class="btn sm" data-action="mover-lote" data-lote="${esc(l.id)}">Mover para a unidade</button>` : ''}
+            <button class="btn sm danger" data-action="desfazer-lote" data-lote="${esc(l.id)}">↶ Desfazer (excluir)</button>
+          </div>
+        </div>
+        <details><summary class="small">Ver processos</summary>
+          <ul class="small">${procs.map(d => `<li>${esc(d.processo || d.inquerito || '—')} – ${esc(d.ato || d.tipo)}${d.idPje ? ' (ID ' + esc(d.idPje) + ')' : ''}</li>`).join('')}</ul>
+        </details>
+      </div>`;
+    }).join('') : '<p class="muted">Nenhuma importação para desfazer.</p>';
+  }
+  function abrirHistorico() { renderHistorico(); $('#dlg-historico').showModal(); }
+
+  /** Barra exibida logo após uma importação, com o botão Desfazer. */
+  function renderAvisoImportacao() {
+    const el = $('#aviso-importacao');
+    const l = state.importacoes.find(x => !x.desfeita);
+    const ok = l && !l.oculta && state.importacoes[0] === l && (Date.now() - new Date(l.em).getTime()) < 24 * 3600 * 1000 &&
+      (l.novos || []).some(id => state.diligencias.some(d => d.id === id));
+    if (!ok) { el.classList.add('hidden'); return; }
+    const n = l.novos.filter(id => state.diligencias.some(d => d.id === id)).length;
+    const outras = state.unidades.filter(u => u.id !== l.unidade);
+    el.innerHTML = `<span>Última importação do PJE (${quando(l.em)}): <b>${n} novo(s)${(l.atualizados || []).length ? ', ' + l.atualizados.length + ' atualizado(s)' : ''}</b> em <b>${esc(nomeUn(l.unidade))}</b>.</span>
+      <button class="btn sm danger" data-action="desfazer-lote" data-lote="${esc(l.id)}">↶ Desfazer importação</button>
+      ${outras.map(u => `<button class="btn sm" data-action="mover-lote" data-lote="${esc(l.id)}" data-destino="${esc(u.id)}">Mover para ${esc(u.nome)}</button>`).join('')}
+      <button class="btn sm" data-action="ocultar-aviso-imp" data-lote="${esc(l.id)}">Está certo ✓</button>`;
+    el.classList.remove('hidden');
+  }
+
   // ------------------------------------------------------------------ Backup / exportação
   function exportarJSON() {
     state.config.ultimoBackup = new Date().toISOString();
@@ -909,6 +1049,14 @@
       case 'resposta': e.stopPropagation(); abrirResposta(id); break;
       case 'marcar': marcarStatus(id, el.dataset.status); break;
       case 'trocar-unidade': trocarUnidade(el.dataset.un); break;
+      case 'historico-importacoes': abrirHistorico(); break;
+      case 'desfazer-lote': desfazerImportacao(el.dataset.lote); break;
+      case 'mover-lote': {
+        const sel = document.querySelector(`.lote-destino[data-lote="${CSS.escape(el.dataset.lote)}"]`);
+        moverImportacao(el.dataset.lote, el.dataset.destino || (sel && sel.value));
+        break;
+      }
+      case 'ocultar-aviso-imp': { const l = state.importacoes.find(x => x.id === el.dataset.lote); if (l) { l.oculta = true; salvar(); render(); } break; }
       case 'add-unidade': adicionarUnidade(); break;
       case 'del-unidade': removerUnidade(el.dataset.un); break;
       case 'ciencia': e.stopPropagation(); registrarCiencia(id); break;
@@ -1057,12 +1205,19 @@
     /** Recebe uma lista de diligências já normalizadas e grava. */
     adicionar(lista) {
       const agora = new Date().toISOString();
-      lista.forEach(d => state.diligencias.push(Object.assign({
-        id: uid(), criadoEm: agora, atualizadoEm: agora, status: 'pendente', andamentos: [], unidade: state.unidadeAtual
-      }, d)));
+      const ids = [];
+      lista.forEach(d => {
+        const nd = Object.assign({ id: uid(), criadoEm: agora, atualizadoEm: agora, status: 'pendente', andamentos: [], unidade: state.unidadeAtual }, d);
+        state.diligencias.push(nd);
+        ids.push(nd.id);
+      });
       salvar();
       render();
+      return ids;
     },
+    /** Cópia integral de um registro (para poder desfazer uma importação). */
+    copia(id) { const d = state.diligencias.find(x => x.id === id); return d ? JSON.parse(JSON.stringify(d)) : null; },
+    registrarImportacao,
     /** Atualiza um registro existente com dados vindos do PJE. */
     atualizar(id, campos, nota) {
       const d = state.diligencias.find(x => x.id === id);

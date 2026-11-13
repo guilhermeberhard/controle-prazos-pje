@@ -389,3 +389,11 @@ kbd { background: #f1f3f7; border: 1px solid var(--border); border-radius: 4px; 
 .imp-un select { width: auto; font-weight: 700; }
 @media (max-width: 900px) { .barra-unidade { position: static; } }
 @media print { .barra-unidade .seletor-unidade, .barra-unidade .rotulo { display: none; } .barra-unidade { position: static; } }
+
+/* ---------- Desfazer importação ---------- */
+.aviso-imp { background: #fff0e3; color: #7a3a00; border-bottom: 1px solid #f3c79c; }
+.lote { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.lote.ultimo { border-color: var(--orange); background: #fffaf4; }
+.lote-cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.lote select { width: auto; padding: 4px 8px; font-size: 13px; }
+.lote ul { margin: 6px 0 0; padding-left: 18px; }

@@ -401,6 +401,7 @@
     const hojeISO = P.toISO(P.hoje());
     const novos = sel.filter(i => !i.existente);
     const atual = sel.filter(i => i.existente);
+    const snapshots = atual.map(i => ({ id: i.existente, antes: P.copia(i.existente) }));
     atual.forEach(i => {
       const d = P.diligencias().find(x => x.id === i.existente);
       const c = diferencas(d, i);
@@ -408,8 +409,9 @@
       const txt = Object.keys(c).filter(k => ROTULOS[k]).map(k => ROTULOS[k] + (/prazoPje|Ciencia/.test(k) ? ' ' + P.fmt(c[k]) : k === 'prazoDias' ? ' ' + c[k] : '')).join('; ');
       P.atualizar(i.existente, c, 'Atualizado pela importação do PJE' + (txt ? ': ' + txt : '') + (c.prazoEstimado ? ' (estimado)' : ''));
     });
+    let idsNovos = [];
     if (novos.length) {
-      P.adicionar(novos.map(i => ({
+      idsNovos = P.adicionar(novos.map(i => ({
         fase: i.fase, processo: i.processo, inquerito: i.inquerito || '', classe: i.classe || '', partes: i.partes || '',
         ato: i.ato || '', idPje: i.idPje || '', tipo: i.tipo, requisitante: i.requisitante, orgao: i.orgao || '',
         descricao: i.descricao || '', recebimento: i.recebimento || '', limiteCiencia: i.limiteCiencia || '',
@@ -420,6 +422,7 @@
     } else {
       P.salvarERender();
     }
+    P.registrarImportacao({ origem: ultimaOrigem || 'importação do PJE', novos: idsNovos, atualizados: snapshots });
     $('#dlg-importar').close();
     P.toast(`${P.unidades().find(u => u.id === P.unidadeAtual()).nome}: ${novos.length} novo(s) e ${atual.length} atualizado(s).`);
   }
