@@ -389,6 +389,15 @@
   }
 
   // ------------------------------------------------------------------ Painel
+  /** Partes com os órgãos abreviados, para caber na linha (PCES / MPES). */
+  function partesCurtas(d) {
+    return String(d.partes || '')
+      .replace(/POL[ÍI]CIA CIVIL DO ESTADO DO ESP[ÍI]RITO SANTO/gi, 'PCES')
+      .replace(/MINIST[ÉE]RIO P[ÚU]BLICO DO ESTADO DO ESP[ÍI]RITO SANTO/gi, 'MPES')
+      .replace(/\s+/g, ' ').trim();
+  }
+  const linhaPartes = d => d.partes ? `<div class="partes" title="${esc(d.partes)}">👤 ${esc(partesCurtas(d))}</div>` : '';
+
   function itemHTML(d) {
     return `<div class="item" data-action="editar" data-id="${d.id}">
       <div class="item-prazo">${badgeResposta(d, true)}</div>
@@ -397,6 +406,7 @@
         <div class="s">${esc(subtitulo(d) || d.tipo)}</div>
         <div class="s">${esc(d.tipo)}${d.orgao ? ' · ' + esc(d.orgao) : ''}</div>
         <div class="s">${statusTag(d.status)} ${d.prazoInterno ? 'Prazo interno: ' + fmt(d.prazoInterno) : ''} ${d.responsavel ? '· ' + esc(d.responsavel) : ''}</div>
+        ${linhaPartes(d)}
       </div>
       <button class="icon-btn" data-action="resposta" data-id="${d.id}" title="Gerar minuta de resposta">Minuta</button>
     </div>`;
@@ -458,7 +468,7 @@
       const ganho = seHoje && seTacita ? diasAte(seTacita) - diasAte(seHoje) : 0;
       return `<tr>
         <td>${badgePrazo(d.limiteCiencia, true, 'cie')}</td>
-        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc(d.classe || d.inquerito || '')}</span>${d.reuPreso ? ' <span class="badge preso">PRESO</span>' : ''}</td>
+        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc(d.classe || d.inquerito || '')}</span>${d.reuPreso ? ' <span class="badge preso">PRESO</span>' : ''}${linhaPartes(d)}</td>
         <td>${esc(d.ato || d.tipo)}${d.idPje ? `<br><span class="muted small">ID ${esc(d.idPje)}</span>` : ''}</td>
         <td>${temPrazoResposta(d) ? `<b>${d.prazoDias} dias</b>` : '<span class="muted">sem prazo</span>'}</td>
         <td>${seHoje ? fmt(seHoje) : '—'}</td>
@@ -520,7 +530,7 @@
         <td>${faseTag(d)}</td>
         <td>${badgeResposta(d, at)}</td>
         <td>${badgePrazo(d.prazoInterno, at)}</td>
-        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc([d.inquerito, subtitulo(d)].filter(Boolean).join(' · '))}</span>${d.partes ? `<div class="desc" title="${esc(d.partes)}">${esc(d.partes.length > 90 ? d.partes.slice(0, 88) + '…' : d.partes)}</div>` : ''}</td>
+        <td><strong>${esc(d.processo || '—')}</strong><br><span class="muted small">${esc([d.inquerito, subtitulo(d)].filter(Boolean).join(' · '))}</span>${linhaPartes(d)}</td>
         <td>${esc(d.tipo)} ${d.reuPreso ? '<span class="badge preso">PRESO</span>' : ''}<div class="desc">${esc(d.descricao || '')}</div></td>
         <td>${esc(d.requisitante)}<br><span class="muted small">${esc(d.orgao || '')}</span></td>
         <td>${esc(d.responsavel || '—')}</td>
@@ -560,7 +570,7 @@
       const cls = ['cal-dia', dia.getMonth() !== mes ? 'fora' : '', (dia.getDay() === 0 || dia.getDay() === 6) ? 'fds' : '', iso === hojeISO ? 'hoje' : ''].join(' ');
       const evs = (porDia[iso] || []).map(([tipo, d]) => {
         const feito = !ativa(d) || ((tipo === 'pje' || tipo === 'est') && d.status === 'cumprida');
-        return `<span class="cal-ev ${feito ? 'feito' : tipo}" data-action="editar" data-id="${d.id}" title="${esc((subtitulo(d) || d.tipo) + ' – ' + tituloDil(d))}">${ROT[tipo]} · ${esc(d.processo || d.inquerito || d.tipo)}</span>`;
+        return `<span class="cal-ev ${feito ? 'feito' : tipo}" data-action="editar" data-id="${d.id}" title="${esc((subtitulo(d) || d.tipo) + ' – ' + tituloDil(d) + (d.partes ? ' – ' + partesCurtas(d) : ''))}">${ROT[tipo]} · ${esc(d.processo || d.inquerito || d.tipo)}</span>`;
       }).join('');
       html += `<div class="${cls}"><div class="num"><span>${dia.getDate()}</span>${fer ? `<span class="chip feriado" title="${esc(fer)}">${esc(fer.length > 14 ? fer.slice(0, 13) + '…' : fer)}</span>` : ''}</div>${evs}</div>`;
     }
@@ -735,7 +745,7 @@
     const ativas = dils().filter(ativa).sort(ordenarPorPrazo);
     const dSel = dilId ? state.diligencias.find(x => x.id === dilId) : null;
     const listaD = dSel && !ativa(dSel) ? [dSel].concat(ativas) : ativas;
-    opcoes('#r-diligencia', listaD.map(d => [d.id, `${FASES[fase(d)]}${dataRef(d) ? ' até ' + fmt(dataRef(d)) : ''} – ${tituloDil(d)} – ${d.ato || d.tipo}`]), '(sem diligência – preencher manualmente)');
+    opcoes('#r-diligencia', listaD.map(d => [d.id, `${FASES[fase(d)]}${dataRef(d) ? ' até ' + fmt(dataRef(d)) : ''} – ${tituloDil(d)} – ${d.ato || d.tipo}${d.partes ? ' – ' + partesCurtas(d).slice(0, 70) : ''}`]), '(sem diligência – preencher manualmente)');
     const mods = state.modelos.slice().sort((a, b) => (a.categoria + a.titulo).localeCompare(b.categoria + b.titulo, 'pt-BR'));
     opcoes('#r-modelo', mods.map(m => [m.id, `${m.categoria} – ${m.titulo}`]));
     $('#r-diligencia').value = dilId || '';

@@ -397,3 +397,6 @@ kbd { background: #f1f3f7; border: 1px solid var(--border); border-radius: 4px; 
 .lote-cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
 .lote select { width: auto; padding: 4px 8px; font-size: 13px; }
 .lote ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* ---------- Partes ---------- */
+.partes { font-size: 13px; font-weight: 600; color: var(--navy); margin-top: 4px; line-height: 1.35; }
